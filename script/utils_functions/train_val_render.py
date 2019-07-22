@@ -1,6 +1,6 @@
 
 import numpy as np
-import tqdm
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 from utils_functions.renderBatchItem import renderBatchSil
@@ -37,8 +37,8 @@ def train_render(model, train_dataloader, test_dataloader,
     # contains n steps value for global loss, alpha , beta, gamma ,x, y, z training loss
     stepsTrainLoss = open("./results/stepsTrainLoss_{}_{}_batchsOf{}img_{:.1f}%noise_{}epochs_RenderRegr.txt".format(date4File, cubeSetName, str(batch_size), noise*100, str(n_epochs), fileExtension), "w+")
 
-
-    for epoch in range(n_epochs):
+    loop = n_epochs
+    for epoch in tqdm(range(n_epochs)):
 
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9) #use SGD with lr update
 
@@ -58,10 +58,10 @@ def train_render(model, train_dataloader, test_dataloader,
         steps_y_loss = []
         steps_z_loss = []
 
-        loop = tqdm.tqdm(train_dataloader)
+        # loop = tqdm(train_dataloader)
         count = 0
         print('train phase epoch {}'.format(epoch))
-        for image, silhouette, parameter in loop:
+        for image, silhouette, parameter in train_dataloader:
             image = image.to(device)  # we have to send the inputs and targets at every step to the GPU too
             silhouette = silhouette.to(device)
 
@@ -97,7 +97,7 @@ def train_render(model, train_dataloader, test_dataloader,
             # predicted_params = torch.cat((zero_array, predicted_params), 1)
             # np_params = predicted_params.detach().cpu().numpy() #ensor to numpy array, ERROR HERE, DOES NOT HAVE GRAD
 
-            if count % 100 == 0:
+            if epoch % 20 == 0:
                 plot = True
             else:
                 plot = False
@@ -135,12 +135,12 @@ def train_render(model, train_dataloader, test_dataloader,
 
             print(
                 'step: {}/{} current MSE loss : {:.4f}, MSE angle loss: {:.4f} {:.4f} {:.4f} MSE translation loss: {:.4f} {:.4f} {:.4f} '
-                .format(count, len(loop), lossMSE, alpha_loss, beta_loss, gamma_loss, x_loss, y_loss, z_loss))
+                .format(count, loop, lossMSE, alpha_loss, beta_loss, gamma_loss, x_loss, y_loss, z_loss))
 
             #  save current step value for each parameter
             stepsTrainLoss.write(
                 'step: {}/{} current MSE loss : {:.4f}, MSE angle loss: {:.4f} {:.4f} {:.4f}  MSE translation loss: {:.4f} {:.4f} {:.4f}  \r\n'
-                .format(count, len(loop), lossMSE, alpha_loss, beta_loss, gamma_loss, x_loss, y_loss, z_loss))
+                .format(count, loop, lossMSE, alpha_loss, beta_loss, gamma_loss, x_loss, y_loss, z_loss))
 
             count = count + 1
 
@@ -168,27 +168,27 @@ def train_render(model, train_dataloader, test_dataloader,
 
         print('parameters saved for epoch {}'.format(epoch))
 
-        # test the model
-        print('test phase epoch {}'.format(epoch))
-        model.eval()
-        parameters, predicted_params, test_losses, al, bl, gl, xl, yl, zl = testRenderResnet(model, test_dataloader, loss_function,
-                                                                            fileExtension, device, obj_name,
-                                                                            epoch_number=epoch)
-
-        all_Test_losses.append(test_losses)
-        Test_epoch_losses_alpha.append(al)
-        Test_epoch_losses_beta.append(bl)
-        Test_epoch_losses_gamma.append(gl)
-        Test_epoch_losses_x.append(xl)
-        Test_epoch_losses_y.append(yl)
-        Test_epoch_losses_z.append(zl)
-
-        epochsValLoss.write(
-            'Validation Loss for epoch {} global {:.4f} angle loss: {:.4f} {:.4f} {:.4f} translation loss: {:.4f} {:.4f} {:.4f}  \r\n'
-            .format(epoch, test_losses, al, bl, gl, xl, yl, zl))
+        # # test the model
+        # print('test phase epoch {}'.format(epoch))
+        # model.eval()
+        # parameters, predicted_params, test_losses, al, bl, gl, xl, yl, zl = testRenderResnet(model, test_dataloader, loss_function,
+        #                                                                     fileExtension, device, obj_name,
+        #                                                                     epoch_number=epoch)
+        #
+        # all_Test_losses.append(test_losses)
+        # Test_epoch_losses_alpha.append(al)
+        # Test_epoch_losses_beta.append(bl)
+        # Test_epoch_losses_gamma.append(gl)
+        # Test_epoch_losses_x.append(xl)
+        # Test_epoch_losses_y.append(yl)
+        # Test_epoch_losses_z.append(zl)
+        #
+        # epochsValLoss.write(
+        #     'Validation Loss for epoch {} global {:.4f} angle loss: {:.4f} {:.4f} {:.4f} translation loss: {:.4f} {:.4f} {:.4f}  \r\n'
+        #     .format(epoch, test_losses, al, bl, gl, xl, yl, zl))
 
     epochsValLoss.close()
     epochsTrainLoss.close()
     stepsTrainLoss.close()
 
-    return all_Train_losses, all_Test_losses
+    return all_Train_losses

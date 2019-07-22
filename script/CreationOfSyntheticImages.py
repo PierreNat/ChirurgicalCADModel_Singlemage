@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import tqdm
 import matplotlib.image as mpimg
 import random
+from scipy.misc import imsave
+import imageio
 from utils_functions.camera_settings import camera_setttings
 
 def main():
@@ -27,11 +29,11 @@ def main():
     print(vertices_1.shape)
     print(faces_1.shape)
 
-    file_name_extension = 'OneCenteredImage'
+    file_name_extension = 'exampleInit'
 
 
 
-    nb_im = 1000
+    nb_im = 1
     #init and create renderer object
     R = np.array([np.radians(0), np.radians(0), np.radians(0)])  # angle in degree
     t = np.array([0, 0, 0])  # translation in meter
@@ -48,10 +50,10 @@ def main():
         # define transfomration parameter randomly uniform
         alpha = 0#uniform(0, 180)
         beta =  0#uniform(0, 180)
-        gamma = 105#uniform(0, 180)
+        gamma = 60#uniform(0, 180)
         x = 0#uniform(-2, 2)
         y = 0#uniform(-2, 2)
-        z = 6#uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 10#uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
         R = np.array([np.radians(alpha), np.radians(beta), np.radians(gamma)])  # angle in degree
         t = np.array([x, y, z])  # translation in meter
 
@@ -109,6 +111,7 @@ def main():
             fig = plt.figure()
             fig.add_subplot(1, 2, 1)
             plt.imshow(image)
+            imageio.imwrite("3D_objects/example5_init.png", image)
 
             fig.add_subplot(1, 2, 2)
             plt.imshow(sil, cmap='gray')

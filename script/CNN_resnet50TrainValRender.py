@@ -23,7 +23,7 @@ file_name_extension = 'OneCenteredImage'  # choose the corresponding database to
 
 batch_size = 1
 
-n_epochs = 5
+n_epochs = 100
 
 target_size = (512, 512)
 
@@ -54,17 +54,17 @@ ratio = 0.9  # 90%training 10%validation
 split = int(len(cubes)*0.9)
 test_length = 1000
 
-train_im = cubes[:split]  # 90% training
-train_sil = sils[:split]
-train_param = params[:split]
+train_im = cubes  # 90% training
+train_sil = sils
+train_param = params
 
-val_im = cubes[split:]  # remaining ratio for validation
-val_sil = sils[split:]
-val_param = params[split:]
+val_im = train_im   # remaining ratio for validation
+val_sil = train_sil
+val_param = train_param
 
-test_im = cubes[:test_length]
-test_sil = sils[:test_length]
-test_param = params[:test_length]
+test_im = train_im
+test_sil = train_sil
+test_param = train_param
 
 #  ------------------------------------------------------------------
 
@@ -78,28 +78,28 @@ test_dataset = CubeDataset(test_im, test_sil, test_param, transforms)
 
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
 val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=2)
+test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
 
 
-# for image, sil, param in train_dataloader:
-#
-# #plot silhouette
-#     print(image.size(), sil.size(), param.size()) #torch.Size([batch, 3, 512, 512]) torch.Size([batch, 6])
-#     im =2
-#     print(param[im])  # parameter in form tensor([2.5508, 0.0000, 0.0000, 0.0000, 0.0000, 5.0000])
-#
-#     image2show = image[im]  # indexing random  one image
-#     print(image2show.size()) #torch.Size([3, 512, 512])
-#     plt.imshow((image2show * 0.5 + 0.5).numpy().transpose(1, 2, 0))
-#     plt.show()
-#
-#     image2show = sil[im]  # indexing random  one image
-#     print(image2show.size())  # torch.Size([3, 512, 512])
-#     image2show = image2show.numpy()
-#     plt.imshow(image2show, cmap='gray')
-#     plt.show()
-#
-#     break  # break here just to show 1 batch of data
+for image, sil, param in train_dataloader:
+
+#plot silhouette
+    print(image.size(), sil.size(), param.size()) #torch.Size([batch, 3, 512, 512]) torch.Size([batch, 6])
+    im = 0
+    print(param[im])  # parameter in form tensor([2.5508, 0.0000, 0.0000, 0.0000, 0.0000, 5.0000])
+
+    image2show = image[im]  # indexing random  one image
+    print(image2show.size()) #torch.Size([3, 512, 512])
+    plt.imshow((image2show * 0.5 + 0.5).numpy().transpose(1, 2, 0))
+    plt.show()
+
+    image2show = sil[im]  # indexing random  one image
+    print(image2show.size())  # torch.Size([3, 512, 512])
+    image2show = image2show.numpy()
+    plt.imshow(image2show, cmap='gray')
+    plt.show()
+
+    break  # break here just to show 1 batch of data
 
 #  ------------------------------------------------------------------
 
@@ -113,7 +113,7 @@ criterion = nn.MSELoss()  #nn.BCELoss()   #nn.CrossEntropyLoss()  define the los
 #
 #  ------------------------------------------------------------------
 
-train_losses, all_Test_losses = train_render(model, train_dataloader, test_dataloader,
+train_losses = train_render(model, train_dataloader, test_dataloader,
                                         n_epochs, criterion,
                                         date4File, cubeSetName, batch_size, fileExtension, device, obj_name, noise)
 
