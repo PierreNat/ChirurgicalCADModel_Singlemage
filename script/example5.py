@@ -4,7 +4,7 @@ Example 4. Finding camera parameters.
 import os
 import argparse
 import glob
-
+from scipy.spatial.transform.rotation import Rotation as Rot
 import torch
 import torch.nn as nn
 import numpy as np
@@ -60,10 +60,10 @@ class Model(nn.Module):
 
         alpha = 0
         beta = 0
-        gamma = 0
+        gamma = 90
         x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
-        z = 8  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 7  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
         resolutionX = 256  # in pixel
         resolutionY = 256
@@ -177,12 +177,18 @@ def make_gif(filename):
 def main():
     count = 0
     losses = []
+    a = []
+    b = []
+    c = []
     tx = []
     ty = []
     tz = []
+    alpha_GT = 0
+    beta_GT = 0
+    gamma_GT = 100 #angle in degrer
     tx_GT = 0
     ty_GT = 0
-    tz_GT = 10
+    tz_GT = 6
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref.png'))
@@ -199,19 +205,28 @@ def main():
 
     # optimizer = chainer.optimizers.Adam(alpha=0.1)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
-    loop = tqdm.tqdm(range(1000))
+    loop = tqdm.tqdm(range(500))
     for i in loop:
         optimizer.zero_grad()
         loss = model()
+        loss.backward()
+        optimizer.step()
+
         losses.append(loss.detach().cpu().numpy())
         cp_x = ((model.t).detach().cpu().numpy())[0, 0]
         cp_y = ((model.t).detach().cpu().numpy())[0, 1]
         cp_z = ((model.t).detach().cpu().numpy())[0,2]
+        # cp_rotMat = (model.R).detach().cpu().numpy()
+        # r = Rot.from_dcm(cp_rotMat)
+        # r_euler = r.as_euler('xyz', degrees=True)
+        # print(r_euler)
+        # a.append(abs(r_euler[0,0] - alpha_GT))
+        # b.append(abs(r_euler[0,1] - beta_GT))
+        # c.append(abs(r_euler[0,2] - gamma_GT))
         tx.append(abs(cp_x - tx_GT))
         ty.append(abs(cp_y - ty_GT))
         tz.append(abs(cp_z - tz_GT)) #z axis error
-        loss.backward()
-        optimizer.step()
+
         images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures))
         image = images.detach().cpu().numpy()[0].transpose(1,2,0)
         imsave('/tmp/_tmp_%04d.png' % i, image)
@@ -221,7 +236,8 @@ def main():
         #     break
 
     make_gif(args.filename_output)
-    fig, (p1, p2) = plt.subplots(2,sharex=True)
+    fig, (p1, p2, p3) = plt.subplots(3,sharex=True)
+
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
 
@@ -232,8 +248,18 @@ def main():
     p2.plot(np.arange(count), ty, label="y values")
     p2.plot(np.arange(count), tz, label="z values")
 
-    p2.set(xlabel='iterations', ylabel='Absolute error')
+    p2.set(xlabel='iterations', ylabel='Absolute error Translation [mm]')
     p2.legend()
+
+    # p3.plot(np.arange(count), a, label="alpha values")
+    # p3.plot(np.arange(count), b, label="beta values")
+    # p3.plot(np.arange(count), c, label="gamma values")
+    #
+    # p3.set(xlabel='iterations', ylabel='Absolute error Rotation [deg]')
+    # p3.legend()
+
+
+
     plt.show()
 
 
