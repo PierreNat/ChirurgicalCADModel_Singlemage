@@ -11,6 +11,7 @@ import numpy as np
 from skimage.io import imread, imsave
 import tqdm
 import imageio
+import matplotlib.pyplot as plt
 import math as m
 
 import neural_renderer as nr
@@ -57,12 +58,12 @@ class Model(nn.Module):
         # extrinsic parameter, link world/object coordinate to camera coordinate
         # ---------------------------------------------------------------------------------
 
-        alpha = 180
+        alpha = 0
         beta = 0
         gamma = 0
         x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
-        z = 5  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 8  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
         resolutionX = 256  # in pixel
         resolutionY = 256
@@ -120,16 +121,18 @@ class Model(nn.Module):
         # ---------------------------------------------------------------------------------
 
 
-
-        self.camera_position = nn.Parameter(torch.from_numpy(np.array([6, 10, -14], dtype=np.float32)))
+        #
+        # self.camera_position = nn.Parameter(torch.from_numpy(np.array([6, 10, -14], dtype=np.float32)))
 
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', K=self.K, R=self.R, t=self.t, image_size=256)
+        renderer = nr.Renderer(camera_mode='projection', K=self.K, R=self.R, t=self.t, image_size=512, near=1, far=1000, light_intensity_ambient=0.5, light_intensity_directional=0.5,
+                 light_color_ambient=[1,1,1], light_color_directional=[1,1,1],
+                 light_direction=[0,1,0])
         # renderer.K = self.K
         # renderer.R = self.R
         # renderer.t = self.t
         # renderer = nr.Renderer(camera_mode='look_at', image_size=256)
-        renderer.eye = self.camera_position
+        # renderer.eye = self.camera_position
         self.renderer = renderer
 
     def forward(self):
@@ -137,7 +140,20 @@ class Model(nn.Module):
         # image has size [1,256,256]
         # image self size [256,256]
 
-        loss = torch.sum((image - self.image_ref[None, :, :]) ** 2)
+        loss = nn.BCELoss()(image, self.image_ref[None, :, :])
+        # loss = torch.sum((image - self.image_ref[None, :, :]) ** 2)
+        #
+        # ref = np.squeeze(self.image_ref[None, :, :]).cpu()
+        # image = image.detach().cpu().numpy().transpose((1, 2, 0))
+        # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+        # fig = plt.figure()
+        # fig.add_subplot(1, 2, 1)
+        # plt.imshow(image, cmap='gray')
+        # fig.add_subplot(1, 2, 2)
+        # plt.imshow(ref, cmap='gray')
+        # plt.show()
+
+
         return loss
 
 
@@ -159,14 +175,22 @@ def make_gif(filename):
 
 
 def main():
+    count = 0
+    losses = []
+    tx = []
+    ty = []
+    tz = []
+    tx_GT = 0
+    ty_GT = 0
+    tz_GT = 10
     parser = argparse.ArgumentParser()
-    parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'teapot.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example4_ref.png'))
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example4_result.gif'))
+    parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
+    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref.png'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_result.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
-
+    # loss_function2 = nn.BCELoss()
     # if args.make_reference_image:
     #     make_reference_image(args.filename_ref, args.filename_obj)
 
@@ -179,15 +203,39 @@ def main():
     for i in loop:
         optimizer.zero_grad()
         loss = model()
+        losses.append(loss.detach().cpu().numpy())
+        cp_x = ((model.t).detach().cpu().numpy())[0, 0]
+        cp_y = ((model.t).detach().cpu().numpy())[0, 1]
+        cp_z = ((model.t).detach().cpu().numpy())[0,2]
+        tx.append(abs(cp_x - tx_GT))
+        ty.append(abs(cp_y - ty_GT))
+        tz.append(abs(cp_z - tz_GT)) #z axis error
         loss.backward()
         optimizer.step()
         images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures))
         image = images.detach().cpu().numpy()[0].transpose(1,2,0)
         imsave('/tmp/_tmp_%04d.png' % i, image)
         loop.set_description('Optimizing (loss %.4f)' % loss.data)
-        if loss.item() < 70:
-            break
+        count = count +1
+        # if loss.item() < 0.015:
+        #     break
+
     make_gif(args.filename_output)
+    fig, (p1, p2) = plt.subplots(2,sharex=True)
+    p1.plot(np.arange(count), losses, label="Global Loss")
+    p1.set( ylabel='BCE Loss')
+
+    # Place a legend to the right of this smaller subplot.
+    p1.legend()
+
+    p2.plot(np.arange(count), tx, label="x values")
+    p2.plot(np.arange(count), ty, label="y values")
+    p2.plot(np.arange(count), tz, label="z values")
+
+    p2.set(xlabel='iterations', ylabel='Absolute error')
+    p2.legend()
+    plt.show()
+
 
 
 if __name__ == '__main__':
