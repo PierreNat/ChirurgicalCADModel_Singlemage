@@ -26,12 +26,13 @@ class Model(nn.Module):
         # load .obj
         texture_size = 2
         # vertices, faces = nr.load_obj(filename_obj)
-        vertices, faces = nr.load_obj(filename_obj)
+        vertices, faces ,  textures = nr.load_obj(filename_obj, load_texture=True)
         vertices = vertices[None, :, :]  # [num_vertices, XYZ] -> [batch_size=1, num_vertices, XYZ]
         faces = faces[None, :, :]  # [num_faces, 3] -> [batch_size=1, num_faces, 3
         # create texture [batch_size=1, num_faces, texture_size, texture_size, texture_size, RGB]
-        textures = torch.ones(1, faces.shape[1], texture_size, texture_size, texture_size, 3,
-                              dtype=torch.float32).cuda()
+        textures = textures[None, :, :]
+        # textures = torch.ones(1, faces.shape[1], texture_size, texture_size, texture_size, 3,
+        #                       dtype=torch.float32).cuda()
 
         self.register_buffer('vertices', vertices)
         self.register_buffer('faces', faces)
@@ -58,15 +59,15 @@ class Model(nn.Module):
         # extrinsic parameter, link world/object coordinate to camera coordinate
         # ---------------------------------------------------------------------------------
 
-        alpha = 0
-        beta = 0
-        gamma = 90
+        alpha = np.radians(0)
+        beta = np.radians(0)
+        gamma = np.radians(0)
         x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
-        z = 7  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 12 # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
-        resolutionX = 256  # in pixel
-        resolutionY = 256
+        resolutionX = 512  # in pixel
+        resolutionY = 512
         scale = 1
         f = 35  # focal on lens
         sensor_width = 32  # in mm given in blender , camera sensor type
@@ -79,6 +80,7 @@ class Model(nn.Module):
         Cam_centerY = resolutionY / 2
 
         batch = vertices.shape[0]
+
         Rx = np.array([[1, 0, 0],
                        [0, m.cos(alpha), -m.sin(alpha)],
                        [0, m.sin(alpha), m.cos(alpha)]])
@@ -93,12 +95,13 @@ class Model(nn.Module):
 
         #   creaete the rotation camera matrix
 
-        R = np.matmul(Rx, Ry)
-        R = np.matmul(R, Rz)
+        Rzy = np.matmul(Rz, Ry)
+        Rzyx = np.matmul(Rzy, Rx)
+        R = Rzyx
 
         t = np.array([x, y, z])  # camera position [x,y, z] 0 0 5
-
-
+        # RR = Rot.from_dcm(R)
+        # print(RR.as_euler('xyz', degrees=True))
 
         # ---------------------------------------------------------------------------------
         # intrinsic parameter, link camera coordinate to image plane
@@ -107,6 +110,8 @@ class Model(nn.Module):
         K = np.array([[f / pix_sizeX, 0, Cam_centerX],
                       [0, f / pix_sizeY, Cam_centerY],
                       [0, 0, 1]])  # shape of [nb_vertice, 3, 3]
+
+        print(K)
 
         K = np.repeat(K[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
         R = np.repeat(R[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
@@ -125,7 +130,8 @@ class Model(nn.Module):
         # self.camera_position = nn.Parameter(torch.from_numpy(np.array([6, 10, -14], dtype=np.float32)))
 
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', K=self.K, R=self.R, t=self.t, image_size=512, near=1, far=1000, light_intensity_ambient=0.5, light_intensity_directional=0.5,
+        renderer = nr.Renderer(camera_mode='projection',orig_size=512, K=self.K, R=self.R, t=self.t, image_size=512, near=1, far=1000,
+                               light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
                  light_color_ambient=[1,1,1], light_color_directional=[1,1,1],
                  light_direction=[0,1,0])
         # renderer.K = self.K
@@ -183,12 +189,15 @@ def main():
     tx = []
     ty = []
     tz = []
+    #ground value to be plotted on the graph as line
     alpha_GT = 0
     beta_GT = 0
     gamma_GT = 100 #angle in degrer
     tx_GT = 0
     ty_GT = 0
-    tz_GT = 6
+    tz_GT = 5
+
+    iterations = 200
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref.png'))
@@ -201,42 +210,56 @@ def main():
     #     make_reference_image(args.filename_ref, args.filename_obj)
 
     model = Model(args.filename_obj, args.filename_ref)
+
     model.cuda()
 
     # optimizer = chainer.optimizers.Adam(alpha=0.1)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
-    loop = tqdm.tqdm(range(500))
+    loop = tqdm.tqdm(range(iterations))
     for i in loop:
         optimizer.zero_grad()
         loss = model()
+        print((model.t).detach().cpu().numpy())
         loss.backward()
         optimizer.step()
 
         losses.append(loss.detach().cpu().numpy())
+        print(((model.K).detach().cpu().numpy()))
         cp_x = ((model.t).detach().cpu().numpy())[0, 0]
         cp_y = ((model.t).detach().cpu().numpy())[0, 1]
-        cp_z = ((model.t).detach().cpu().numpy())[0,2]
-        # cp_rotMat = (model.R).detach().cpu().numpy()
-        # r = Rot.from_dcm(cp_rotMat)
-        # r_euler = r.as_euler('xyz', degrees=True)
+        cp_z = ((model.t).detach().cpu().numpy())[0, 2]
+        cp_rotMat = (model.R).detach().cpu().numpy()
+        r = Rot.from_dcm(cp_rotMat)
+        r_euler = r.as_euler('xyz', degrees=True)
         # print(r_euler)
         # a.append(abs(r_euler[0,0] - alpha_GT))
         # b.append(abs(r_euler[0,1] - beta_GT))
         # c.append(abs(r_euler[0,2] - gamma_GT))
-        tx.append(abs(cp_x - tx_GT))
-        ty.append(abs(cp_y - ty_GT))
-        tz.append(abs(cp_z - tz_GT)) #z axis error
+        a.append(abs(r_euler[0,0] ))
+        b.append(abs(r_euler[0,1] ))
+        c.append(abs(r_euler[0,2] ))
+        # print (r_euler[0,2], r_euler[0,2]% 180)
+        # tx.append(abs(cp_x - tx_GT))
+        # ty.append(abs(cp_y - ty_GT))
+        # tz.append(abs(cp_z)) #z axis error
 
-        images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures))
+        tx.append(abs(cp_x))
+        ty.append(abs(cp_y))
+        tz.append(abs(cp_z)) #z axis value
+
+        images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), )
+
         image = images.detach().cpu().numpy()[0].transpose(1,2,0)
+        # plt.imshow(image)
+        # plt.show()
         imsave('/tmp/_tmp_%04d.png' % i, image)
         loop.set_description('Optimizing (loss %.4f)' % loss.data)
         count = count +1
-        # if loss.item() < 0.015:
-        #     break
+        if loss.item() == 180:
+            break
 
     make_gif(args.filename_output)
-    fig, (p1, p2, p3) = plt.subplots(3,sharex=True)
+    fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
@@ -245,22 +268,32 @@ def main():
     p1.legend()
 
     p2.plot(np.arange(count), tx, label="x values")
+    p2.axhline(y=tx_GT)
     p2.plot(np.arange(count), ty, label="y values")
+    p2.axhline(y=ty_GT)
     p2.plot(np.arange(count), tz, label="z values")
+    p2.axhline(y=tz_GT)
 
-    p2.set(xlabel='iterations', ylabel='Absolute error Translation [mm]')
+    p2.set(xlabel='iterations', ylabel='Translation value [mm]')
     p2.legend()
 
-    # p3.plot(np.arange(count), a, label="alpha values")
-    # p3.plot(np.arange(count), b, label="beta values")
-    # p3.plot(np.arange(count), c, label="gamma values")
-    #
-    # p3.set(xlabel='iterations', ylabel='Absolute error Rotation [deg]')
-    # p3.legend()
+    p3.plot(np.arange(count), a, label="alpha values")
+    p3.axhline(y=alpha_GT)
+    p3.plot(np.arange(count), b, label="beta values")
+    p3.axhline(y=beta_GT)
+    p3.plot(np.arange(count), c, label="gamma values")
+    p3.axhline(y=gamma_GT)
 
+    p3.set(xlabel='iterations', ylabel='Rotation value [deg]')
+    p3.legend()
 
+    fig.savefig('images/ex5plot.pdf')
+    import matplotlib2tikz
+
+    matplotlib2tikz.save("images/ex5plot.tex")
 
     plt.show()
+
 
 
 
