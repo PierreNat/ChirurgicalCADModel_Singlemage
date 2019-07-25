@@ -62,9 +62,9 @@ class Model(nn.Module):
         alpha = np.radians(0)
         beta = np.radians(0)
         gamma = np.radians(0)
-        x = 0  # uniform(-2, 2)
-        y = 0  # uniform(-2, 2)
-        z = 12 # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        x = 0 # uniform(-2, 2)
+        y =0  # uniform(-2, 2)
+        z = 6 # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
         resolutionX = 512  # in pixel
         resolutionY = 512
@@ -111,9 +111,10 @@ class Model(nn.Module):
                       [0, f / pix_sizeY, Cam_centerY],
                       [0, 0, 1]])  # shape of [nb_vertice, 3, 3]
 
-        print(K)
+
 
         K = np.repeat(K[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
+        KK =K
         R = np.repeat(R[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
         t = np.repeat(t[np.newaxis, :], 1, axis=0)  # shape of [1, 3]
 
@@ -197,7 +198,7 @@ def main():
     ty_GT = 0
     tz_GT = 5
 
-    iterations = 200
+    iterations = 500
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref.png'))
@@ -219,12 +220,12 @@ def main():
     for i in loop:
         optimizer.zero_grad()
         loss = model()
-        print((model.t).detach().cpu().numpy())
+        # print((model.t).detach().cpu().numpy())
         loss.backward()
         optimizer.step()
 
         losses.append(loss.detach().cpu().numpy())
-        print(((model.K).detach().cpu().numpy()))
+        # print(((model.K).detach().cpu().numpy()))
         cp_x = ((model.t).detach().cpu().numpy())[0, 0]
         cp_y = ((model.t).detach().cpu().numpy())[0, 1]
         cp_z = ((model.t).detach().cpu().numpy())[0, 2]
@@ -255,8 +256,8 @@ def main():
         imsave('/tmp/_tmp_%04d.png' % i, image)
         loop.set_description('Optimizing (loss %.4f)' % loss.data)
         count = count +1
-        if loss.item() == 180:
-            break
+        # if loss.item() == 180:
+        #     break
 
     make_gif(args.filename_output)
     fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
