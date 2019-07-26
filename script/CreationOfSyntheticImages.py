@@ -29,7 +29,7 @@ def main():
     print(vertices_1.shape)
     print(faces_1.shape)
 
-    file_name_extension = 'exampleInit'
+    file_name_extension = 'wrist1im'
 
 
 
