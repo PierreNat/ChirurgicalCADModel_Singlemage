@@ -53,10 +53,12 @@ class CubeDataset(Dataset):
     def __len__(self):
         return len(self.images)  # return the length of the dataset
 
-class ModelParallelResNet50(ResNet):
-    def __init__(self, *args, **kwargs):
-        super(ModelParallelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, *args, **kwargs)
 
+class ModelParallelResNet50(ResNet):
+    def __init__(self, filename_obj=None, filename_ref=None, *args, **kwargs):
+        super(ModelParallelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
+
+# resnet part
         self.seq1 = nn.Sequential(
             self.conv1,
             self.bn1,
@@ -75,9 +77,109 @@ class ModelParallelResNet50(ResNet):
 
         self.fc
 
+# render part
+
+        vertices, faces, textures = nr.load_obj(filename_obj, load_texture=True)
+        vertices = vertices[None, :, :]  # [num_vertices, XYZ] -> [batch_size=1, num_vertices, XYZ]
+        faces = faces[None, :, :]  # [num_faces, 3] -> [batch_size=1, num_faces, 3
+        textures = textures[None, :, :]
+
+        self.register_buffer('vertices', vertices)
+        self.register_buffer('faces', faces)
+        self.register_buffer('textures', textures)
+
+        # load reference image
+        image_ref = torch.from_numpy((imread(filename_ref).max(-1) != 0).astype(np.float32))
+        self.register_buffer('image_ref', image_ref)
+
+        # ---------------------------------------------------------------------------------
+        # extrinsic parameter, link world/object coordinate to camera coordinate
+        # ---------------------------------------------------------------------------------
+
+        alpha = np.radians(0)
+        beta = np.radians(0)
+        gamma = np.radians(0)
+
+        x = 0  # uniform(-2, 2)
+        y = 0  # uniform(-2, 2)
+        z = 12  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+
+        resolutionX = 512  # in pixel
+        resolutionY = 512
+        scale = 1
+        f = 35  # focal on lens
+        sensor_width = 32  # in mm given in blender , camera sensor type
+        pixels_in_u_per_mm = (resolutionX * scale) / sensor_width
+        pixels_in_v_per_mm = (resolutionY * scale) / sensor_width
+        pix_sizeX = 1 / pixels_in_u_per_mm
+        pix_sizeY = 1 / pixels_in_v_per_mm
+
+        Cam_centerX = resolutionX / 2
+        Cam_centerY = resolutionY / 2
+
+        batch = vertices.shape[0]
+
+        Rx = np.array([[1, 0, 0],
+                       [0, m.cos(alpha), -m.sin(alpha)],
+                       [0, m.sin(alpha), m.cos(alpha)]])
+
+        Ry = np.array([[m.cos(beta), 0, m.sin(beta)],
+                       [0, 1, 0],
+                       [-m.sin(beta), 0, m.cos(beta)]])
+
+        Rz = np.array([[m.cos(gamma), -m.sin(gamma), 0],
+                       [m.sin(gamma), m.cos(gamma), 0],
+                       [0, 0, 1]])
+
+        #   creaete the rotation camera matrix
+
+        Rzy = np.matmul(Rz, Ry)
+        Rzyx = np.matmul(Rzy, Rx)
+        R = Rzyx
+
+        t = np.array([x, y, z])  # camera position [x,y, z] 0 0 5
+
+        # ---------------------------------------------------------------------------------
+        # intrinsic parameter, link camera coordinate to image plane
+        # ---------------------------------------------------------------------------------
+
+        K = np.array([[f / pix_sizeX, 0, Cam_centerX],
+                      [0, f / pix_sizeY, Cam_centerY],
+                      [0, 0, 1]])  # shape of [nb_vertice, 3, 3]
+
+        K = np.repeat(K[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
+        R = np.repeat(R[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
+        t = np.repeat(t[np.newaxis, :], 1, axis=0)  # shape of [1, 3]
+
+        self.K = K
+        # self.R = nn.Parameter(torch.from_numpy(np.array(R, dtype=np.float32)))
+        self.R = R
+        # self.Rx
+        # self.Ry
+        # self.Rz
+        # quaternion notation?
+        # -------------------------- working block translation
+        self.tx = torch.from_numpy(np.array(x, dtype=np.float32)).cuda()
+        self.ty = torch.from_numpy(np.array(y, dtype=np.float32)).cuda()
+        self.tz = torch.from_numpy(np.array(z, dtype=np.float32)).cuda()
+        self.t = nn.Parameter(torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0))
+
+        # --------------------------
+
+        # setup renderer
+        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
+                               far=1000,
+                               light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
+                               light_color_ambient=[1, 1, 1], light_color_directional=[1, 1, 1],
+                               light_direction=[0, 1, 0])
+
+        self.renderer = renderer
+
     def forward(self, x):
-        x = self.seq2(self.seq1(x))
-        return self.fc(x.view(x.size(0), -1))
+        x = self.seq1(x)
+        x = self.seq2(x)
+        params = self.fc(x.view(x.size(0), -1))
+        return params
 
 class Model(nn.Module):
     def __init__(self, filename_obj, filename_ref=None):
@@ -260,100 +362,104 @@ def main():
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
 
-    model = ModelParallelResNet50()
+    model = ModelParallelResNet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref)
     # model = Model(args.filename_obj, args.filename_ref)
 
     model.to(device)
     lossfunction = nn.BCELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+
 
 
 #training loop
     model.train(True)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
-        optimizer.zero_grad()
+        for image, silhouette, parameter in train_dataloader:
+            image = image.to(device)
+            parameter = parameter.to(device)
+            silhouette = silhouette.to(device)
+            loss = model(image)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        loss = model()
-        loss.backward()
-        optimizer.step()
+            losses.append(loss.detach().cpu().numpy())
+            # print(((model.K).detach().cpu().numpy()))
+            cp_x = ((model.t).detach().cpu().numpy())[0, 0]
+            cp_y = ((model.t).detach().cpu().numpy())[0, 1]
+            cp_z = ((model.t).detach().cpu().numpy())[0, 2]
 
-        losses.append(loss.detach().cpu().numpy())
-        # print(((model.K).detach().cpu().numpy()))
-        cp_x = ((model.t).detach().cpu().numpy())[0, 0]
-        cp_y = ((model.t).detach().cpu().numpy())[0, 1]
-        cp_z = ((model.t).detach().cpu().numpy())[0, 2]
+            cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
+            r = Rot.from_dcm(cp_rotMat)
+            r_euler = r.as_euler('xyz', degrees=True)
 
-        cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
-        r = Rot.from_dcm(cp_rotMat)
-        r_euler = r.as_euler('xyz', degrees=True)
+            # print(r_euler)
+            # a.append(abs(r_euler[0,0] - alpha_GT))
+            # b.append(abs(r_euler[0,1] - beta_GT))
+            # c.append(abs(r_euler[0,2] - gamma_GT))
 
-        # print(r_euler)
-        # a.append(abs(r_euler[0,0] - alpha_GT))
-        # b.append(abs(r_euler[0,1] - beta_GT))
-        # c.append(abs(r_euler[0,2] - gamma_GT))
+            a.append(abs(r_euler[0, 0])) #        a.append(abs(r_euler[0,0] ))
+            b.append(abs(r_euler[0, 1]))
+            c.append(abs(r_euler[0, 2]))
 
-        a.append(abs(r_euler[0, 0])) #        a.append(abs(r_euler[0,0] ))
-        b.append(abs(r_euler[0, 1]))
-        c.append(abs(r_euler[0, 2]))
+            # print (r_euler[0,2], r_euler[0,2]% 180)
 
-        # print (r_euler[0,2], r_euler[0,2]% 180)
+            # tx.append(abs(cp_x - tx_GT))
+            # ty.append(abs(cp_y - ty_GT))
+            # tz.append(abs(cp_z)) #z axis error
 
-        # tx.append(abs(cp_x - tx_GT))
-        # ty.append(abs(cp_y - ty_GT))
-        # tz.append(abs(cp_z)) #z axis error
+            tx.append(abs(cp_x))
+            ty.append(abs(cp_y))
+            tz.append(abs(cp_z)) #z axis value
 
-        tx.append(abs(cp_x))
-        ty.append(abs(cp_y))
-        tz.append(abs(cp_z)) #z axis value
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), )
 
-        images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), )
+            image = images.detach().cpu().numpy()[0].transpose(1,2,0)
+            # plt.imshow(image)
+            # plt.show()
+            imsave('/tmp/_tmp_%04d.png' % i, image)
+            loop.set_description('Optimizing (loss %.4f)' % loss.data)
+            count = count +1
+            # if loss.item() == 180:
+            #     break
 
-        image = images.detach().cpu().numpy()[0].transpose(1,2,0)
-        # plt.imshow(image)
-        # plt.show()
-        imsave('/tmp/_tmp_%04d.png' % i, image)
-        loop.set_description('Optimizing (loss %.4f)' % loss.data)
-        count = count +1
-        # if loss.item() == 180:
-        #     break
+        make_gif(args.filename_output)
+        fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
 
-    make_gif(args.filename_output)
-    fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
+        p1.plot(np.arange(count), losses, label="Global Loss")
+        p1.set( ylabel='BCE Loss')
 
-    p1.plot(np.arange(count), losses, label="Global Loss")
-    p1.set( ylabel='BCE Loss')
+        # Place a legend to the right of this smaller subplot.
+        p1.legend()
 
-    # Place a legend to the right of this smaller subplot.
-    p1.legend()
+        p2.plot(np.arange(count), tx, label="x values")
+        p2.axhline(y=tx_GT)
+        p2.plot(np.arange(count), ty, label="y values")
+        p2.axhline(y=ty_GT)
+        p2.plot(np.arange(count), tz, label="z values")
+        p2.axhline(y=tz_GT)
 
-    p2.plot(np.arange(count), tx, label="x values")
-    p2.axhline(y=tx_GT)
-    p2.plot(np.arange(count), ty, label="y values")
-    p2.axhline(y=ty_GT)
-    p2.plot(np.arange(count), tz, label="z values")
-    p2.axhline(y=tz_GT)
+        p2.set(xlabel='iterations', ylabel='Translation value')
+        p2.legend()
 
-    p2.set(xlabel='iterations', ylabel='Translation value')
-    p2.legend()
+        p3.plot(np.arange(count), a, label="alpha values")
+        p3.axhline(y=alpha_GT)
+        p3.plot(np.arange(count), b, label="beta values")
+        p3.axhline(y=beta_GT)
+        p3.plot(np.arange(count), c, label="gamma values")
+        p3.axhline(y=gamma_GT)
 
-    p3.plot(np.arange(count), a, label="alpha values")
-    p3.axhline(y=alpha_GT)
-    p3.plot(np.arange(count), b, label="beta values")
-    p3.axhline(y=beta_GT)
-    p3.plot(np.arange(count), c, label="gamma values")
-    p3.axhline(y=gamma_GT)
+        p3.set(xlabel='iterations', ylabel='Rotation value')
+        p3.legend()
 
-    p3.set(xlabel='iterations', ylabel='Rotation value')
-    p3.legend()
+        fig.savefig('images/ex5plot.pdf')
+        import matplotlib2tikz
 
-    fig.savefig('images/ex5plot.pdf')
-    import matplotlib2tikz
+        matplotlib2tikz.save("images/ex5plot.tex")
 
-    matplotlib2tikz.save("images/ex5plot.tex")
-
-    plt.show()
+        plt.show()
 
 if __name__ == '__main__':
     main()
