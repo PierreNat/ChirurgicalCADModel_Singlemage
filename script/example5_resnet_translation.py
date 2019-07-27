@@ -28,8 +28,10 @@ from scipy.misc import imsave
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(current_dir, 'data')
 
+
+
 class CubeDataset(Dataset):
-    # write your code
+    # code to shape data for the dataloader
     def __init__(self, images, silhouettes, parameters, transform=None):
         self.images = images.astype(np.uint8)  # our image
         self.silhouettes = silhouettes.astype(np.uint8)  # our related parameter
@@ -179,7 +181,10 @@ class ModelParallelResNet50(ResNet):
         x = self.seq1(x)
         x = self.seq2(x)
         params = self.fc(x.view(x.size(0), -1))
-        return params
+        self.tt = params
+        image = self.renderer(self.vertices, self.faces, mode='silhouettes')
+        loss = nn.BCELoss()(image, self.image_ref[None, :, :])
+        return loss
 
 class Model(nn.Module):
     def __init__(self, filename_obj, filename_ref=None):
@@ -425,41 +430,41 @@ def main():
             # if loss.item() == 180:
             #     break
 
-        make_gif(args.filename_output)
-        fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
+    make_gif(args.filename_output)
+    fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
 
-        p1.plot(np.arange(count), losses, label="Global Loss")
-        p1.set( ylabel='BCE Loss')
+    p1.plot(np.arange(count), losses, label="Global Loss")
+    p1.set( ylabel='BCE Loss')
 
-        # Place a legend to the right of this smaller subplot.
-        p1.legend()
+    # Place a legend to the right of this smaller subplot.
+    p1.legend()
 
-        p2.plot(np.arange(count), tx, label="x values")
-        p2.axhline(y=tx_GT)
-        p2.plot(np.arange(count), ty, label="y values")
-        p2.axhline(y=ty_GT)
-        p2.plot(np.arange(count), tz, label="z values")
-        p2.axhline(y=tz_GT)
+    p2.plot(np.arange(count), tx, label="x values")
+    p2.axhline(y=tx_GT)
+    p2.plot(np.arange(count), ty, label="y values")
+    p2.axhline(y=ty_GT)
+    p2.plot(np.arange(count), tz, label="z values")
+    p2.axhline(y=tz_GT)
 
-        p2.set(xlabel='iterations', ylabel='Translation value')
-        p2.legend()
+    p2.set(xlabel='iterations', ylabel='Translation value')
+    p2.legend()
 
-        p3.plot(np.arange(count), a, label="alpha values")
-        p3.axhline(y=alpha_GT)
-        p3.plot(np.arange(count), b, label="beta values")
-        p3.axhline(y=beta_GT)
-        p3.plot(np.arange(count), c, label="gamma values")
-        p3.axhline(y=gamma_GT)
+    p3.plot(np.arange(count), a, label="alpha values")
+    p3.axhline(y=alpha_GT)
+    p3.plot(np.arange(count), b, label="beta values")
+    p3.axhline(y=beta_GT)
+    p3.plot(np.arange(count), c, label="gamma values")
+    p3.axhline(y=gamma_GT)
 
-        p3.set(xlabel='iterations', ylabel='Rotation value')
-        p3.legend()
+    p3.set(xlabel='iterations', ylabel='Rotation value')
+    p3.legend()
 
-        fig.savefig('images/ex5plot.pdf')
-        import matplotlib2tikz
+    fig.savefig('images/ex5plot.pdf')
+    import matplotlib2tikz
 
-        matplotlib2tikz.save("images/ex5plot.tex")
+    matplotlib2tikz.save("images/ex5plot.tex")
 
-        plt.show()
+    plt.show()
 
 if __name__ == '__main__':
     main()

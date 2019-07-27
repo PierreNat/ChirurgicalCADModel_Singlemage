@@ -18,7 +18,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.cuda.empty_cache()
 print(device)
 
-file_name_extension = 'WristwithMovingBackground'  # choose the corresponding database to use
+file_name_extension = 'WristwithMultMovingBackground'  # choose the corresponding database to use
 
 batch_size = 10
 
