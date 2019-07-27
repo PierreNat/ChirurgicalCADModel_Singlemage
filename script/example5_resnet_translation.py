@@ -164,7 +164,8 @@ class ModelParallelResNet50(ResNet):
         self.tx = torch.from_numpy(np.array(x, dtype=np.float32)).cuda()
         self.ty = torch.from_numpy(np.array(y, dtype=np.float32)).cuda()
         self.tz = torch.from_numpy(np.array(z, dtype=np.float32)).cuda()
-        self.t = nn.Parameter(torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0))
+        self.t =torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0)
+        # self.t = nn.Parameter(torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0))
 
         # --------------------------
 
@@ -181,9 +182,26 @@ class ModelParallelResNet50(ResNet):
         x = self.seq1(x)
         x = self.seq2(x)
         params = self.fc(x.view(x.size(0), -1))
-        self.tt = params
-        image = self.renderer(self.vertices, self.faces, mode='silhouettes')
+        print(params)
+        # if(params[0,2] < 4 or params[0,2] > 15):
+        #     params[0,2] = 10
+
+        self.t = params
+        print(self.t)
+        image = self.renderer(self.vertices, self.faces, t=self.t,  mode='silhouettes')
+
         loss = nn.BCELoss()(image, self.image_ref[None, :, :])
+
+        # print('loss is {}'.format(loss))
+        # ref = np.squeeze(self.image_ref[None, :, :]).cpu()
+        # image = image.detach().cpu().numpy().transpose((1, 2, 0))
+        # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+        # fig = plt.figure()
+        # fig.add_subplot(1, 2, 1)
+        # plt.imshow(image, cmap='gray')
+        # fig.add_subplot(1, 2, 2)
+        # plt.imshow(ref, cmap='gray')
+        # plt.show()
         return loss
 
 class Model(nn.Module):
@@ -419,7 +437,7 @@ def main():
             ty.append(abs(cp_y))
             tz.append(abs(cp_z)) #z axis value
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), )
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
 
             image = images.detach().cpu().numpy()[0].transpose(1,2,0)
             # plt.imshow(image)
