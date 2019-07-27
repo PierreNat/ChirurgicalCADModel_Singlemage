@@ -242,7 +242,7 @@ def main():
     ty_GT = 0
     tz_GT = 5
 
-    iterations = 500
+    iterations = 1000
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png'))
@@ -255,13 +255,10 @@ def main():
     # model = Model(args.filename_obj, args.filename_ref)
 
     model.to(device)
-    lossfunction = nn.BCELoss()
-
-
 
 #training loop
     model.train(True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -273,9 +270,8 @@ def main():
             model.t = params
             print(model.t)
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
-            print(parameter[0,3:6])
-            loss = nn.MSELoss()(params, parameter[0,3:6]+(torch.randn(3)/10).to(device))
-
+            # loss = nn.MSELoss()(params, parameter[0,3:6]).to(device) #regression between computed and ground truth
+            loss = nn.BCELoss()(image, model.image_ref[None, :, :]) + nn.MSELoss()(params, parameter[0,3:6]+(torch.randn(3)/10).to(device))
             print('loss is {}'.format(loss))
             # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
             # image = image.detach().cpu().numpy().transpose((1, 2, 0))
@@ -335,11 +331,11 @@ def main():
             #     break
 
     make_gif(args.filename_output)
-    fig, (p1, p2, p3) = plt.subplots(3,sharex=True, figsize=(15,10)) #largeur hauteur
+    fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-
+    p1.set_ylim([-50, 50])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -350,7 +346,8 @@ def main():
     p2.plot(np.arange(count), tz, label="z values")
     p2.axhline(y=tz_GT)
 
-    p2.set(xlabel='iterations', ylabel='Translation value')
+    p2.set(ylabel='Translation value')
+    p2.set_ylim([-10, 10])
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values")
