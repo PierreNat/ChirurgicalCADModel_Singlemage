@@ -182,142 +182,8 @@ class ModelParallelResNet50(ResNet):
         x = self.seq1(x)
         x = self.seq2(x)
         params = self.fc(x.view(x.size(0), -1))
-        print(params)
-        # if(params[0,2] < 4 or params[0,2] > 15):
-        #     params[0,2] = 10
-
-        self.t = params
-        print(self.t)
-        image = self.renderer(self.vertices, self.faces, t=self.t,  mode='silhouettes')
-
-        loss = nn.BCELoss()(image, self.image_ref[None, :, :])
-
-        # print('loss is {}'.format(loss))
-        # ref = np.squeeze(self.image_ref[None, :, :]).cpu()
-        # image = image.detach().cpu().numpy().transpose((1, 2, 0))
-        # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
-        # fig = plt.figure()
-        # fig.add_subplot(1, 2, 1)
-        # plt.imshow(image, cmap='gray')
-        # fig.add_subplot(1, 2, 2)
-        # plt.imshow(ref, cmap='gray')
-        # plt.show()
-        return loss
-
-class Model(nn.Module):
-    def __init__(self, filename_obj, filename_ref=None):
-        super(Model, self).__init__()
-        # load .obj
-        texture_size = 2
-        # vertices, faces = nr.load_obj(filename_obj)
-        vertices, faces ,  textures = nr.load_obj(filename_obj, load_texture=True)
-        vertices = vertices[None, :, :]  # [num_vertices, XYZ] -> [batch_size=1, num_vertices, XYZ]
-        faces = faces[None, :, :]  # [num_faces, 3] -> [batch_size=1, num_faces, 3
-        textures = textures[None, :, :]
-
-        self.register_buffer('vertices', vertices)
-        self.register_buffer('faces', faces)
-        self.register_buffer('textures', textures)
-
-        # load reference image
-        image_ref = torch.from_numpy((imread(filename_ref).max(-1) != 0).astype(np.float32))
-        self.register_buffer('image_ref', image_ref)
-
-# ---------------------------------------------------------------------------------
-# extrinsic parameter, link world/object coordinate to camera coordinate
-# ---------------------------------------------------------------------------------
-
-        alpha = np.radians(0)
-        beta = np.radians(0)
-        gamma = np.radians(0)
-
-        x = 0 # uniform(-2, 2)
-        y =0  # uniform(-2, 2)
-        z = 12 # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
-
-        resolutionX = 512  # in pixel
-        resolutionY = 512
-        scale = 1
-        f = 35  # focal on lens
-        sensor_width = 32  # in mm given in blender , camera sensor type
-        pixels_in_u_per_mm = (resolutionX * scale) / sensor_width
-        pixels_in_v_per_mm = (resolutionY * scale) / sensor_width
-        pix_sizeX = 1 / pixels_in_u_per_mm
-        pix_sizeY = 1 / pixels_in_v_per_mm
-
-        Cam_centerX = resolutionX / 2
-        Cam_centerY = resolutionY / 2
-
-        batch = vertices.shape[0]
-
-        Rx = np.array([[1, 0, 0],
-                       [0, m.cos(alpha), -m.sin(alpha)],
-                       [0, m.sin(alpha), m.cos(alpha)]])
-
-        Ry = np.array([[m.cos(beta), 0, m.sin(beta)],
-                       [0, 1, 0],
-                       [-m.sin(beta), 0, m.cos(beta)]])
-
-        Rz = np.array([[m.cos(gamma), -m.sin(gamma), 0],
-                       [m.sin(gamma), m.cos(gamma), 0],
-                       [0, 0, 1]])
-
-        #   creaete the rotation camera matrix
-
-        Rzy = np.matmul(Rz, Ry)
-        Rzyx = np.matmul(Rzy, Rx)
-        R = Rzyx
-
-        t = np.array([x, y, z])  # camera position [x,y, z] 0 0 5
-
-# ---------------------------------------------------------------------------------
-# intrinsic parameter, link camera coordinate to image plane
-# ---------------------------------------------------------------------------------
-
-        K = np.array([[f / pix_sizeX, 0, Cam_centerX],
-                      [0, f / pix_sizeY, Cam_centerY],
-                      [0, 0, 1]])  # shape of [nb_vertice, 3, 3]
-
-
-
-        K = np.repeat(K[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
-        R = np.repeat(R[np.newaxis, :, :], batch, axis=0)  # shape of [batch=1, 3, 3]
-        t = np.repeat(t[np.newaxis, :], 1, axis=0)  # shape of [1, 3]
-
-        self.K = K
-        # self.R = nn.Parameter(torch.from_numpy(np.array(R, dtype=np.float32)))
-        self.R = R
-        # self.Rx
-        # self.Ry
-        # self.Rz
-    #quaternion notation?
-#-------------------------- working block translation
-        self.tx = torch.from_numpy(np.array(x, dtype=np.float32)).cuda()
-        self.ty =torch.from_numpy(np.array(y, dtype=np.float32)).cuda()
-        self.tz = torch.from_numpy(np.array(z, dtype=np.float32)).cuda()
-        self.t = nn.Parameter(torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0))
-
-        # --------------------------
-
-        # setup renderer
-        renderer = nr.Renderer(camera_mode='projection',orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1, far=1000,
-                                light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
-                                light_color_ambient=[1,1,1], light_color_directional=[1,1,1],
-                                light_direction=[0,1,0])
-
-        self.renderer = renderer
-
-# ---------------------------------------------------------------------------------
-# forward pass
-# ---------------------------------------------------------------------------------
-    def forward(self):
-
-
-
-        image = self.renderer(self.vertices, self.faces, mode='silhouettes')
-
-        loss = nn.BCELoss()(image, self.image_ref[None, :, :])
-        return loss
+        print('computed parameters are {}'.format(params))
+        return params
 
 # ---------------------------------------------------------------------------------
 # make Gif
@@ -371,12 +237,12 @@ def main():
     #ground value to be plotted on the graph as line
     alpha_GT = 0
     beta_GT = 0
-    gamma_GT = 100 #angle in degrer
+    gamma_GT = 0 #angle in degrer
     tx_GT = 0
     ty_GT = 0
     tz_GT = 5
 
-    iterations = 300
+    iterations = 500
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png'))
@@ -403,7 +269,27 @@ def main():
             image = image.to(device)
             parameter = parameter.to(device)
             silhouette = silhouette.to(device)
-            loss = model(image)
+            params = model(image)
+            model.t = params
+            print(model.t)
+            image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
+            print(parameter[0,3:6])
+            loss = nn.MSELoss()(params, parameter[0,3:6]+(torch.randn(3)/10).to(device))
+
+            print('loss is {}'.format(loss))
+            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
+            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
+            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+            # fig = plt.figure()
+            # fig.add_subplot(1, 2, 1)
+            # plt.imshow(image, cmap='gray')
+            # fig.add_subplot(1, 2, 2)
+            # plt.imshow(ref, cmap='gray')
+            # plt.show()
+
+
+
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
