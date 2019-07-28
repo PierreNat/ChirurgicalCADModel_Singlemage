@@ -282,7 +282,8 @@ def main():
     ty_GT = 0
     tz_GT = 5
 
-    iterations = 500
+    iterations = 1000
+    file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png')) #image result to target
@@ -301,7 +302,7 @@ def main():
 
 #training loop
     model.train(True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -321,15 +322,20 @@ def main():
             silhouette = silhouette.to(device)
             params = model(image)
             model.t = params
+            bool_first = True
+            # first_
             print(model.t)
 
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
              # regression between computed and ground truth
-            if (model.t[0, 2] > 4 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+            if (model.t[0, 2] > 4 and model.t[0, 2] < 12 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
                 loss = nn.MSELoss()(image, model.image_ref[None, :, :])
+                # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+                # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
                 print('render')
             else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
                 loss = nn.MSELoss()(params, init_params[0, 3:6]).to(device)
                 print('regression')
                 #
@@ -396,7 +402,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 2])
+    p1.set_ylim([0, 0.03])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -421,10 +427,10 @@ def main():
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.legend()
 
-    fig.savefig('images/ex5plot.pdf')
+    fig.savefig('images/ex5plot_{}.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot.tex")
+    matplotlib2tikz.save("images/ex5plot_{}.tex".format(file_name_extension))
 
     plt.show()
 
