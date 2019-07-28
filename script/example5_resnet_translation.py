@@ -14,6 +14,7 @@ import tqdm
 import imageio
 from torch.autograd import Variable
 import torch
+import torchvision.models as models
 from torchvision.models.resnet import ResNet, Bottleneck
 import torchvision.models as models
 import torchgeometry as tgm #from https://torchgeometry.readthedocs.io/en/v0.1.2/_modules/torchgeometry/core/homography_warper.html
@@ -21,7 +22,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Compose, Normalize, Lambda
 import matplotlib.pyplot as plt
 import math as m
-
+import torch.utils.model_zoo as model_zoo
 import neural_renderer as nr
 from scipy.misc import imsave
 
@@ -29,6 +30,41 @@ current_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(current_dir, 'data')
 
 
+__all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
+           'resnet152']
+
+model_urls = {
+    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
+}
+
+
+def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = True, modelName='None', **kwargs):
+    """Constructs a ResNet-50 model.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+    """
+    model = ModelResNet50( filename_obj=filename_obj, filename_ref=filename_ref)
+    if pretrained:
+        print('using own pre-trained model')
+
+        if cifar == True:
+            pretrained_state = model_zoo.load_url(model_urls['resnet50'])
+            model_state = model.state_dict()
+            pretrained_state = {k: v for k, v in pretrained_state.items() if
+                                k in model_state and v.size() == model_state[k].size()}
+            model_state.update(pretrained_state)
+            model.load_state_dict(model_state)
+            model.eval()
+
+        else:
+            model.load_state_dict(torch.load('models/{}.pth'.format(modelName)))
+            model.eval()
+        print('download finished')
+    return model
 
 class CubeDataset(Dataset):
     # code to shape data for the dataloader
@@ -56,9 +92,9 @@ class CubeDataset(Dataset):
         return len(self.images)  # return the length of the dataset
 
 
-class ModelParallelResNet50(ResNet):
+class ModelResNet50(ResNet):
     def __init__(self, filename_obj=None, filename_ref=None, *args, **kwargs):
-        super(ModelParallelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
+        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
 
 # resnet part
         self.seq1 = nn.Sequential(
@@ -242,7 +278,7 @@ def main():
     ty_GT = 0
     tz_GT = 5
 
-    iterations = 1000
+    iterations = 500
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png'))
@@ -251,7 +287,9 @@ def main():
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
 
-    model = ModelParallelResNet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref)
+    # resnet50 = models.resnet50(pretrained=True)
+
+    model = Myresnet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref)
     # model = Model(args.filename_obj, args.filename_ref)
 
     model.to(device)
@@ -270,8 +308,8 @@ def main():
             model.t = params
             print(model.t)
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
-            # loss = nn.MSELoss()(params, parameter[0,3:6]).to(device) #regression between computed and ground truth
-            loss = nn.BCELoss()(image, model.image_ref[None, :, :]) + nn.MSELoss()(params, parameter[0,3:6]+(torch.randn(3)/10).to(device))
+            loss = nn.MSELoss()(params, parameter[0,3:6]).to(device) #regression between computed and ground truth
+            # loss = nn.BCELoss()(image, model.image_ref[None, :, :]) + nn.MSELoss()(params, parameter[0,3:6]).to(device)
             print('loss is {}'.format(loss))
             # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
             # image = image.detach().cpu().numpy().transpose((1, 2, 0))
@@ -335,7 +373,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([-50, 50])
+    p1.set_ylim([0, 5])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
