@@ -66,12 +66,12 @@ class CubeDataset(Dataset):
     def __len__(self):
         return len(self.images)  # return the length of the dataset
 
-def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = True, modelName='None', **kwargs):
+def Myresnet50(filename_obj=None, filename_ref=None, filename_init=None, pretrained=True, cifar = True, modelName='None', **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ModelResNet50( filename_obj=filename_obj, filename_ref=filename_ref)
+    model = ModelResNet50( filename_obj=filename_obj, filename_ref=filename_ref, filename_init= filename_init)
     if pretrained:
         print('using own pre-trained model')
 
@@ -94,7 +94,7 @@ def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = Tr
 
 
 class ModelResNet50(ResNet):
-    def __init__(self, filename_obj=None, filename_ref=None, *args, **kwargs):
+    def __init__(self, filename_obj=None, filename_ref=None, filename_init=None, *args, **kwargs):
         super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
 
 # resnet part
@@ -130,6 +130,9 @@ class ModelResNet50(ResNet):
         # load reference image
         image_ref = torch.from_numpy((imread(filename_ref).max(-1) != 0).astype(np.float32))
         self.register_buffer('image_ref', image_ref)
+         # create image to init the resnet weight at first
+        image_init = torch.from_numpy((imread(filename_init).max(-1) != 0).astype(np.float32))
+        self.register_buffer('image_init', image_init)
 
         # ---------------------------------------------------------------------------------
         # extrinsic parameter, link world/object coordinate to camera coordinate
@@ -282,7 +285,8 @@ def main():
     iterations = 500
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png'))
+    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png')) #image result to target
+    parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
@@ -290,7 +294,7 @@ def main():
 
     # resnet50 = models.resnet50(pretrained=True)
 
-    model = Myresnet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref)
+    model = Myresnet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref, filename_init= args.filename_init)
     # model = Model(args.filename_obj, args.filename_ref)
 
     model.to(device)
@@ -303,19 +307,32 @@ def main():
 
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
+            # init_params = torch.from_numpy(np.array([0,0,0,0,0,12])).to(device)
             parameter = parameter.to(device)
+
+            # init parameter in case of non convergence of the resnet  output parameteers
+            init_params = parameter
+            init_params[0, 0] = 0
+            init_params[0, 1] = 0
+            init_params[0, 2] = 0
+            init_params[0, 3] = 0
+            init_params[0, 4] = 0
+            init_params[0,5] = 12
             silhouette = silhouette.to(device)
             params = model(image)
             model.t = params
             print(model.t)
 
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
-            loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)  # regression between computed and ground truth
+             # regression between computed and ground truth
             if (model.t[0, 2] > 4 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
+                loss = nn.MSELoss()(image, model.image_ref[None, :, :])
                 print('render')
-            #
+            else:
+                loss = nn.MSELoss()(params, init_params[0, 3:6]).to(device)
+                print('regression')
+                #
             # else:
             #     loss = nn.BCELoss()(image, model.image_ref[None, :, :]) #+ nn.MSELoss()(params, parameter[0,3:6]).to(device)
             #     print('render')
@@ -379,7 +396,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 5])
+    p1.set_ylim([0, 2])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -391,7 +408,7 @@ def main():
     p2.axhline(y=tz_GT)
 
     p2.set(ylabel='Translation value')
-    p2.set_ylim([-10, 10])
+    p2.set_ylim([0, 10])
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values")
