@@ -41,6 +41,30 @@ model_urls = {
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }
 
+class CubeDataset(Dataset):
+    # code to shape data for the dataloader
+    def __init__(self, images, silhouettes, parameters, transform=None):
+        self.images = images.astype(np.uint8)  # our image
+        self.silhouettes = silhouettes.astype(np.uint8)  # our related parameter
+        self.parameters = parameters.astype(np.float32)
+        self.transform = transform
+
+    def __getitem__(self, index):
+        # Anything could go here, e.g. image loading from file or a different structure
+        # must return image and center
+        sel_images = self.images[index].astype(np.float32) / 255
+        sel_sils = self.silhouettes[index]
+        sel_params = self.parameters[index]
+
+        if self.transform is not None:
+            sel_images = self.transform(sel_images)
+            sel_sils = torch.from_numpy(sel_sils)
+
+        # squeeze transform sil from tensor shape [6,1,512,512] to shape [6, 512, 512]
+        return sel_images, np.squeeze(sel_sils), torch.FloatTensor(sel_params)  # return all parameter in tensor form
+
+    def __len__(self):
+        return len(self.images)  # return the length of the dataset
 
 def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = True, modelName='None', **kwargs):
     """Constructs a ResNet-50 model.
@@ -66,30 +90,7 @@ def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = Tr
         print('download finished')
     return model
 
-class CubeDataset(Dataset):
-    # code to shape data for the dataloader
-    def __init__(self, images, silhouettes, parameters, transform=None):
-        self.images = images.astype(np.uint8)  # our image
-        self.silhouettes = silhouettes.astype(np.uint8)  # our related parameter
-        self.parameters = parameters.astype(np.float32)
-        self.transform = transform
 
-    def __getitem__(self, index):
-        # Anything could go here, e.g. image loading from file or a different structure
-        # must return image and center
-        sel_images = self.images[index].astype(np.float32) / 255
-        sel_sils = self.silhouettes[index]
-        sel_params = self.parameters[index]
-
-        if self.transform is not None:
-            sel_images = self.transform(sel_images)
-            sel_sils = torch.from_numpy(sel_sils)
-
-        # squeeze transform sil from tensor shape [6,1,512,512] to shape [6, 512, 512]
-        return sel_images, np.squeeze(sel_sils), torch.FloatTensor(sel_params)  # return all parameter in tensor form
-
-    def __len__(self):
-        return len(self.images)  # return the length of the dataset
 
 
 class ModelResNet50(ResNet):
@@ -296,7 +297,7 @@ def main():
 
 #training loop
     model.train(True)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -307,9 +308,17 @@ def main():
             params = model(image)
             model.t = params
             print(model.t)
+
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
-            loss = nn.MSELoss()(params, parameter[0,3:6]).to(device) #regression between computed and ground truth
-            # loss = nn.BCELoss()(image, model.image_ref[None, :, :]) + nn.MSELoss()(params, parameter[0,3:6]).to(device)
+            loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)  # regression between computed and ground truth
+            if (model.t[0, 2] > 4 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
+                print('render')
+            #
+            # else:
+            #     loss = nn.BCELoss()(image, model.image_ref[None, :, :]) #+ nn.MSELoss()(params, parameter[0,3:6]).to(device)
+            #     print('render')
             print('loss is {}'.format(loss))
             # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
             # image = image.detach().cpu().numpy().transpose((1, 2, 0))
@@ -320,9 +329,6 @@ def main():
             # fig.add_subplot(1, 2, 2)
             # plt.imshow(ref, cmap='gray')
             # plt.show()
-
-
-
 
             optimizer.zero_grad()
             loss.backward()
