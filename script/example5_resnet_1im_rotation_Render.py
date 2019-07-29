@@ -365,7 +365,7 @@ def main():
                 init_params[0, 3] = tx_GT
                 init_params[0, 4] = ty_GT
                 init_params[0,5] = 12
-                bool_first= False
+                bool_first = False
 
 
             silhouette = silhouette.to(device)
@@ -373,6 +373,7 @@ def main():
             params = model(image)
             print(params)
             model.t = params[0,3:6]
+            print(model.t)
             model.R = R2Rmat(params[0,0:3]) #angle from resnet are in radian
             bool_first = True
             # first_
@@ -381,7 +382,7 @@ def main():
 
             image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
             # regression between computed and ground truth
-            if (model.t[0, 2] > 4 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
+            if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
                 if (i % 30 == 0):
@@ -390,14 +391,14 @@ def main():
                         print('update lr, is now {}'.format(lr))
 
                 # update init param to avoid jumps if regression is again called
-                init_params[0, 3] = model.t[0, 0]
-                init_params[0, 4] = model.t[0, 1]
+                init_params[0, 3] = model.t[0]
+                init_params[0, 4] = model.t[1]
                 # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
                 # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
                 print('render')
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params, init_params[0, 3:6]).to(device)
+                loss = nn.MSELoss()(params[0,3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
                 print('regression')
 
             print('loss is {}'.format(loss))
