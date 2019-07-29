@@ -245,7 +245,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im'  # choose the corresponding database to use
+    file_name_extension = 'wrist1im_2'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -280,17 +280,17 @@ def main():
     alpha_GT = 0
     beta_GT = 0
     gamma_GT = 0 #angle in degrer
-    tx_GT = 0
-    ty_GT = 0
-    tz_GT = 5
+    tx_GT = -1.5
+    ty_GT = 1.5
+    tz_GT = 6
 
-    iterations = 1000
+    iterations = 100
     file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png')) #image result to target
+    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT2.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_regression.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_regression_2.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -318,21 +318,23 @@ def main():
             print(model.t)
 
              # regression between computed and ground truth
-
+            image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
             optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
             loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
 
 
             print('loss is {}'.format(loss))
-            ref = np.squeeze(model.image_ref[None, :, :]).cpu()
-            image = image.detach().cpu().numpy().transpose((1, 2, 0))
-            image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
-            fig = plt.figure()
-            fig.add_subplot(1, 2, 1)
-            plt.imshow(image, cmap='gray')
-            fig.add_subplot(1, 2, 2)
-            plt.imshow(ref, cmap='gray')
-            plt.show()
+
+
+            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
+            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
+            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+            # fig = plt.figure()
+            # fig.add_subplot(1, 2, 1)
+            # plt.imshow(image, cmap='gray')
+            # fig.add_subplot(1, 2, 2)
+            # plt.imshow(ref, cmap='gray')
+            # plt.show()
 
             optimizer.zero_grad()
             loss.backward()
@@ -363,9 +365,9 @@ def main():
             # ty.append(abs(cp_y - ty_GT))
             # tz.append(abs(cp_z)) #z axis error
 
-            tx.append(abs(cp_x))
-            ty.append(abs(cp_y))
-            tz.append(abs(cp_z)) #z axis value
+            tx.append(cp_x)
+            ty.append(cp_y)
+            tz.append(cp_z) #z axis value
 
             images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
 
@@ -382,7 +384,7 @@ def main():
     fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
 
     p1.plot(np.arange(count), losses, label="Global Loss")
-    p1.set( ylabel='BCE Loss')
+    p1.set( ylabel='MSE Loss')
     p1.set_ylim([0, 1])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
@@ -395,7 +397,7 @@ def main():
     p2.axhline(y=tz_GT)
 
     p2.set(ylabel='Translation value')
-    p2.set_ylim([0, 10])
+    p2.set_ylim([-10, 10])
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values")
@@ -408,10 +410,10 @@ def main():
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_{}2.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_{}2.tex".format(file_name_extension))
 
     plt.show()
     plt.show()

@@ -283,9 +283,9 @@ def main():
     gamma_GT = 0 #angle in degrer
     tx_GT = -1.5
     ty_GT = 1.5
-    tz_GT = 5
+    tz_GT = 6
 
-    iterations = 1500
+    iterations = 200
     file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -305,7 +305,8 @@ def main():
 
 #training loop
     model.train(True)
-
+    bool_first = True
+    lr = 0.01
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -330,24 +331,29 @@ def main():
             # init parameter in case of non convergence of the resnet  output parameteers
             # simulate forward kinematic value
             init_params = parameter
-            init_params[0, 0] = 0
-            init_params[0, 1] = 0
-            init_params[0, 2] = 0
-            init_params[0, 3] = tx_GT
-            init_params[0, 4] = ty_GT
-            init_params[0,5] = 12
+            if bool_first: #the first time, init the convergence parameter for the regression
+                init_params[0, 0] = 0
+                init_params[0, 1] = 0
+                init_params[0, 2] = 0
+                init_params[0, 3] = tx_GT
+                init_params[0, 4] = ty_GT
+                init_params[0,5] = 12
+                bool_first= False
             silhouette = silhouette.to(device)
             params = model(image)
             model.t = params
-            bool_first = True
+
             # first_
             print(model.t)
 
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
              # regression between computed and ground truth
-            if (model.t[0, 2] > 2 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+            if (model.t[0, 2] > 4 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.MSELoss()(image, model.image_ref[None, :, :])
+                if (i % 40 == 0):
+                    lr = lr/10
+                    print('update lr, is now {}'.format(lr))
 
                 # update init param to avoid jumps if regression is again called
                 init_params[0, 3] = model.t[0, 0]
@@ -404,9 +410,9 @@ def main():
             # ty.append(abs(cp_y - ty_GT))
             # tz.append(abs(cp_z)) #z axis error
 
-            tx.append(abs(cp_x))
-            ty.append(abs(cp_y))
-            tz.append(abs(cp_z)) #z axis value
+            tx.append(cp_x)
+            ty.append(cp_y)
+            tz.append(cp_z) #z axis value
 
             images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
 
