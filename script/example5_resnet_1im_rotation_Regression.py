@@ -139,9 +139,9 @@ class ModelResNet50(ResNet):
         # extrinsic parameter, link world/object coordinate to camera coordinate
         # ---------------------------------------------------------------------------------
 
-        alpha = np.radians(60)
+        alpha = np.radians(0)
         beta = np.radians(0)
-        gamma = np.radians(40)
+        gamma = np.radians(0)
 
         x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
@@ -197,7 +197,7 @@ class ModelResNet50(ResNet):
         self.K = K
         # self.R = nn.Parameter(torch.from_numpy(np.array(R, dtype=np.float32)))
         self.R = R
-        print(R)
+        # print(R)
         # self.Rx
         # self.Ry
         # self.Rz
@@ -224,7 +224,7 @@ class ModelResNet50(ResNet):
         x = self.seq1(x)
         x = self.seq2(x)
         params = self.fc(x.view(x.size(0), -1))
-        print('computed parameters are {}'.format(params))
+        # print('computed parameters are {}'.format(params))
         return params
 
 # ---------------------------------------------------------------------------------
@@ -240,9 +240,9 @@ def make_gif(filename):
 def R2Rmat(R, n_comps=1):
     #function use to make the angle into matrix for the projection function of the renderer
 
-    alpha =  R[0] * (3.14/ 180.0)
-    beta = R[1]* (3.14/ 180.0)
-    gamma = R[2]* (3.14/ 180.0)
+    alpha =  R[0] #already in radian
+    beta = R[1]
+    gamma = R[2]
 
     rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
     rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
@@ -290,7 +290,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im_2'  # choose the corresponding database to use
+    file_name_extension = 'wrist1im_R1'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -322,14 +322,14 @@ def main():
     ty = []
     tz = []
     #ground value to be plotted on the graph as line
-    alpha_GT = 60
-    beta_GT = 0
-    gamma_GT = 40 #angle in degrer
+    alpha_GT =  60
+    beta_GT =  0
+    gamma_GT =  40#angle in degrer
     tx_GT = 0
     ty_GT = 0
     tz_GT = 6
 
-    iterations = 500
+    iterations = 100
     file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -355,21 +355,21 @@ def main():
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
             parameter = parameter.to(device)
-            # print(parameter)
+            print(parameter)
             silhouette = silhouette.to(device)
             params = model(image)
             print(params)
             model.t = params[0,3:6]
-            model.R = R2Rmat(params[0,0:3])
+            model.R = R2Rmat(params[0,0:3]) #angle from resnet are in radian
             bool_first = True
             # first_
-            print(model.t)
-            print(model.R)
+            # print(model.t)
+            # print(model.R)
 
              # regression between computed and ground truth
             image = model.renderer(model.vertices, model.faces, R=model.R, t= model.t, mode='silhouettes')
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
+            loss = nn.MSELoss()(params, parameter).to(device)
             if (i % 40 == 0):
                 lr = lr / 10
                 print('update lr, is now {}'.format(lr))
@@ -393,12 +393,12 @@ def main():
 
             losses.append(loss.detach().cpu().numpy())
             # print(((model.K).detach().cpu().numpy()))
-            cp_x = ((model.t).detach().cpu().numpy())[0, 0]
-            cp_y = ((model.t).detach().cpu().numpy())[0, 1]
-            cp_z = ((model.t).detach().cpu().numpy())[0, 2]
+            cp_x = ((model.t).detach().cpu().numpy())[0]
+            cp_y = ((model.t).detach().cpu().numpy())[1]
+            cp_z = ((model.t).detach().cpu().numpy())[2]
 
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
-            r = Rot.from_dcm(cp_rotMat)
+            r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
             r_euler = r.as_euler('xyz', degrees=True)
 
             # print(r_euler)
@@ -420,7 +420,7 @@ def main():
             ty.append(cp_y)
             tz.append(cp_z) #z axis value
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
 
             image = images.detach().cpu().numpy()[0].transpose(1,2,0)
             # plt.imshow(image)
@@ -436,7 +436,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='MSE Loss')
-    p1.set_ylim([0, 1])
+    p1.set_ylim([0, 10])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -459,6 +459,7 @@ def main():
     p3.axhline(y=gamma_GT)
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
+    p3.set_ylim([0, 180])
     p3.legend()
 
     fig.savefig('images/ex5plot_{}2.pdf'.format(file_name_extension))
