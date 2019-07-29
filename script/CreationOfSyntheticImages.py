@@ -29,7 +29,7 @@ def main():
     print(vertices_1.shape)
     print(faces_1.shape)
 
-    file_name_extension = 'test'
+    file_name_extension = 'wrist1im_2'
 
 
 
@@ -51,9 +51,9 @@ def main():
         alpha =0#uniform(0, 180)
         beta =  0#uniform(0, 180)
         gamma = 0#uniform(0, 180)
-        x = 0#uniform(-2, 2)
-        y = 0#uniform(-2, 2)
-        z = 5.5#uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        x = -1.5#uniform(-2, 2)
+        y = 1.5#uniform(-2, 2)
+        z = 6#uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
         R = np.array([np.radians(alpha), np.radians(beta), np.radians(gamma)])  # angle in degree
         t = np.array([x, y, z])  # translation in meter
 
@@ -111,7 +111,7 @@ def main():
             fig = plt.figure()
             fig.add_subplot(1, 2, 1)
             plt.imshow(image)
-            imageio.imwrite("3D_objects/example5_floattest.png", image)
+            imageio.imwrite("3D_objects/example5_t2.png", image)
 
             fig.add_subplot(1, 2, 2)
             plt.imshow(sil, cmap='gray')

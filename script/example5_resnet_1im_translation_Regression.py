@@ -12,6 +12,7 @@ import numpy as np
 from skimage.io import imread, imsave
 import tqdm
 import imageio
+import time
 from torch.autograd import Variable
 import torch
 import torchvision.models as models
@@ -239,6 +240,7 @@ def make_gif(filename):
 # Main
 # ---------------------------------------------------------------------------------
 def main():
+    start = time.time()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.cuda.empty_cache()
     print(device)
@@ -283,12 +285,12 @@ def main():
     tz_GT = 5
 
     iterations = 1000
-    file_name_extension = 'renderBCEloss'
+    file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_regression.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -300,25 +302,14 @@ def main():
 
     model.to(device)
 
-#training loop
     model.train(True)
-
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
-            # init_params = torch.from_numpy(np.array([0,0,0,0,0,12])).to(device)
             parameter = parameter.to(device)
-
-            # init parameter in case of non convergence of the resnet  output parameteers
-            init_params = parameter
-            init_params[0, 0] = 0
-            init_params[0, 1] = 0
-            init_params[0, 2] = 0
-            init_params[0, 3] = 0
-            init_params[0, 4] = 0
-            init_params[0,5] = 12
+            print(parameter)
             silhouette = silhouette.to(device)
             params = model(image)
             model.t = params
@@ -326,32 +317,22 @@ def main():
             # first_
             print(model.t)
 
-            image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
              # regression between computed and ground truth
-            if (model.t[0, 2] > 4 and model.t[0, 2] < 12 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
-                loss = nn.MSELoss()(image, model.image_ref[None, :, :])
-                # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
-                print('render')
-            else:
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params, init_params[0, 3:6]).to(device)
-                print('regression')
-                #
-            # else:
-            #     loss = nn.BCELoss()(image, model.image_ref[None, :, :]) #+ nn.MSELoss()(params, parameter[0,3:6]).to(device)
-            #     print('render')
+
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+            loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
+
+
             print('loss is {}'.format(loss))
-            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
-            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
-            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
-            # fig = plt.figure()
-            # fig.add_subplot(1, 2, 1)
-            # plt.imshow(image, cmap='gray')
-            # fig.add_subplot(1, 2, 2)
-            # plt.imshow(ref, cmap='gray')
-            # plt.show()
+            ref = np.squeeze(model.image_ref[None, :, :]).cpu()
+            image = image.detach().cpu().numpy().transpose((1, 2, 0))
+            image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+            fig = plt.figure()
+            fig.add_subplot(1, 2, 1)
+            plt.imshow(image, cmap='gray')
+            fig.add_subplot(1, 2, 2)
+            plt.imshow(ref, cmap='gray')
+            plt.show()
 
             optimizer.zero_grad()
             loss.backward()
@@ -402,7 +383,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 0.03])
+    p1.set_ylim([0, 1])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -433,6 +414,9 @@ def main():
     matplotlib2tikz.save("images/ex5plot_{}.tex".format(file_name_extension))
 
     plt.show()
+    plt.show()
+    end = time.time()
+    print('time elapsed is: {} min'.format((end - start)/60))
 
 if __name__ == '__main__':
     main()
