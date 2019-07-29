@@ -211,6 +211,7 @@ class ModelResNet50(ResNet):
 
         # --------------------------
 
+
         # setup renderer
         renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
                                far=1000,
