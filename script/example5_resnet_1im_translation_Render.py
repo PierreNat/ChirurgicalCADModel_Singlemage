@@ -285,7 +285,7 @@ def main():
     ty_GT = 1.5
     tz_GT = 6
 
-    iterations = 200
+    iterations = 150
     file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -306,7 +306,7 @@ def main():
 #training loop
     model.train(True)
     bool_first = True
-    lr = 0.01
+    lr = 0.001
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -343,17 +343,15 @@ def main():
             params = model(image)
             model.t = params
 
-            # first_
-            print(model.t)
-
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
              # regression between computed and ground truth
             if (model.t[0, 2] > 4 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-                loss = nn.MSELoss()(image, model.image_ref[None, :, :])
-                if (i % 40 == 0):
-                    lr = lr/10
-                    print('update lr, is now {}'.format(lr))
+                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
+                if (i % 30 == 0):
+                    if(lr > 0.000001):
+                        lr = lr/10
+                        print('update lr, is now {}'.format(lr))
 
                 # update init param to avoid jumps if regression is again called
                 init_params[0, 3] = model.t[0, 0]
@@ -430,19 +428,19 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 0.03])
+    p1.set_ylim([0, 1])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
-    p2.plot(np.arange(count), tx, label="x values")
-    p2.axhline(y=tx_GT)
-    p2.plot(np.arange(count), ty, label="y values")
-    p2.axhline(y=ty_GT)
-    p2.plot(np.arange(count), tz, label="z values")
-    p2.axhline(y=tz_GT)
+    p2.plot(np.arange(count), tx, label="x values", color = 'g' )
+    p2.axhline(y=tx_GT, color = 'g', linestyle= '--' )
+    p2.plot(np.arange(count), ty, label="y values", color = 'y')
+    p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
+    p2.plot(np.arange(count), tz, label="z values", color = 'b')
+    p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
 
     p2.set(ylabel='Translation value')
-    p2.set_ylim([-10, 10])
+    p2.set_ylim([-5, 10])
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values")

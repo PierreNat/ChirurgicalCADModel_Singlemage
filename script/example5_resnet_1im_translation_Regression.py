@@ -284,7 +284,7 @@ def main():
     ty_GT = 1.5
     tz_GT = 6
 
-    iterations = 100
+    iterations = 200
     file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -303,13 +303,14 @@ def main():
     model.to(device)
 
     model.train(True)
+    lr= 0.01
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
             parameter = parameter.to(device)
-            print(parameter)
+            # print(parameter)
             silhouette = silhouette.to(device)
             params = model(image)
             model.t = params
@@ -319,9 +320,11 @@ def main():
 
              # regression between computed and ground truth
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
-            optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
             loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
-
+            if (i % 40 == 0):
+                lr = lr / 10
+                print('update lr, is now {}'.format(lr))
 
             print('loss is {}'.format(loss))
 
