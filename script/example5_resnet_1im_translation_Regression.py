@@ -284,7 +284,7 @@ def main():
     ty_GT = 1.5
     tz_GT = 6
 
-    iterations = 200
+    iterations = 100
     file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -392,15 +392,15 @@ def main():
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
-    p2.plot(np.arange(count), tx, label="x values")
-    p2.axhline(y=tx_GT)
-    p2.plot(np.arange(count), ty, label="y values")
-    p2.axhline(y=ty_GT)
-    p2.plot(np.arange(count), tz, label="z values")
-    p2.axhline(y=tz_GT)
+    p2.plot(np.arange(count), tx, label="x values", color = 'g' )
+    p2.axhline(y=tx_GT, color = 'g', linestyle= '--' )
+    p2.plot(np.arange(count), ty, label="y values", color = 'y')
+    p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
+    p2.plot(np.arange(count), tz, label="z values", color = 'b')
+    p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
 
     p2.set(ylabel='Translation value')
-    p2.set_ylim([-10, 10])
+    p2.set_ylim([-5, 10])
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values")
