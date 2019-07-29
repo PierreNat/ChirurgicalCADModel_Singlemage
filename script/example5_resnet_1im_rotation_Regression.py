@@ -244,9 +244,9 @@ def R2Rmat(R, n_comps=1):
     beta = R[1]
     gamma = R[2]
 
-    rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
-    rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
-    rot_z = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
+    rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_z = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_x[:, 0, 0] = 1
     rot_x[:, 0, 1] = 0
     rot_x[:, 0, 2] = 0
@@ -451,12 +451,12 @@ def main():
     p2.set_ylim([-5, 10])
     p2.legend()
 
-    p3.plot(np.arange(count), a, label="alpha values")
-    p3.axhline(y=alpha_GT)
-    p3.plot(np.arange(count), b, label="beta values")
-    p3.axhline(y=beta_GT)
-    p3.plot(np.arange(count), c, label="gamma values")
-    p3.axhline(y=gamma_GT)
+    p3.plot(np.arange(count), a, label="alpha values", color = 'g')
+    p3.axhline(y=alpha_GT, color = 'g', linestyle= '--' )
+    p3.plot(np.arange(count), b, label="beta values", color = 'y')
+    p3.axhline(y=beta_GT, color = 'y', linestyle= '--')
+    p3.plot(np.arange(count), c, label="gamma values", color = 'b')
+    p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.set_ylim([0, 180])

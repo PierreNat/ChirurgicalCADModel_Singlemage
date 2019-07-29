@@ -244,9 +244,9 @@ def R2Rmat(R, n_comps=1):
     beta = R[1]
     gamma = R[2]
 
-    rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
-    rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
-    rot_z = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=True)
+    rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_z = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_x[:, 0, 0] = 1
     rot_x[:, 0, 1] = 0
     rot_x[:, 0, 2] = 0
@@ -329,7 +329,7 @@ def main():
     ty_GT = 0
     tz_GT = 6
 
-    iterations = 100
+    iterations = 250
     file_name_extension = 'render'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -385,7 +385,7 @@ def main():
             if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 30 == 0):
+                if (i % 40 == 0):
                     if (lr > 0.000001):
                         lr = lr / 10
                         print('update lr, is now {}'.format(lr))
@@ -478,12 +478,12 @@ def main():
     p2.set_ylim([-5, 10])
     p2.legend()
 
-    p3.plot(np.arange(count), a, label="alpha values")
-    p3.axhline(y=alpha_GT)
-    p3.plot(np.arange(count), b, label="beta values")
-    p3.axhline(y=beta_GT)
-    p3.plot(np.arange(count), c, label="gamma values")
-    p3.axhline(y=gamma_GT)
+    p3.plot(np.arange(count), a, label="alpha values", color = 'g')
+    p3.axhline(y=alpha_GT, color = 'g', linestyle= '--' )
+    p3.plot(np.arange(count), b, label="beta values", color = 'y')
+    p3.axhline(y=beta_GT, color = 'y', linestyle= '--')
+    p3.plot(np.arange(count), c, label="gamma values", color = 'b')
+    p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.set_ylim([0, 180])
