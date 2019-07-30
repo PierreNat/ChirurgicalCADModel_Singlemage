@@ -7,6 +7,7 @@ import glob
 from torch.utils.data import Dataset
 from scipy.spatial.transform.rotation import Rotation as Rot
 import torch
+import math as m
 import torch.nn as nn
 import numpy as np
 from skimage.io import imread, imsave
@@ -322,14 +323,14 @@ def main():
     ty = []
     tz = []
     #ground value to be plotted on the graph as line
-    alpha_GT =  60
-    beta_GT =  0
-    gamma_GT =  40#angle in degrer
-    tx_GT = 0
-    ty_GT = 0
-    tz_GT = 6
+    alpha_GT =  m.degrees(params[0,0])
+    beta_GT =  m.degrees(params[0,1])
+    gamma_GT =  m.degrees(params[0,2])#angle in degrer
+    tx_GT =  np.array(params[0,3])
+    ty_GT = np.array(params[0,4])
+    tz_GT = np.array(params[0,5])
 
-    iterations = 250
+    iterations = 500
     file_name_extension = 'render'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -349,7 +350,7 @@ def main():
 
     model.train(True)
     bool_first = True
-    lr= 0.001
+    lr= 0.01
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -362,9 +363,9 @@ def main():
                 init_params[0, 0] = 0
                 init_params[0, 1] = 0
                 init_params[0, 2] = 0
-                init_params[0, 3] = tx_GT
-                init_params[0, 4] = ty_GT
-                init_params[0,5] = 12
+                init_params[0, 3] = torch.from_numpy(tx_GT).to(device)
+                init_params[0, 4] = torch.from_numpy(ty_GT).to(device)
+                init_params[0,5] = torch.from_numpy(tz_GT).to(device)
                 bool_first = False
 
 
@@ -385,14 +386,14 @@ def main():
             if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 40 == 0):
+                if (i % 200 == 0):
                     if (lr > 0.000001):
                         lr = lr / 10
                         print('update lr, is now {}'.format(lr))
 
                 # update init param to avoid jumps if regression is again called
-                init_params[0, 3] = model.t[0]
-                init_params[0, 4] = model.t[1]
+                # init_params[0, 3] = model.t[0]
+                # init_params[0, 4] = model.t[1]
                 # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
                 # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
                 print('render')
