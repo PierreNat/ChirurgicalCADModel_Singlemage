@@ -7,13 +7,13 @@ import glob
 from torch.utils.data import Dataset
 from scipy.spatial.transform.rotation import Rotation as Rot
 import torch
-import math as m
 import torch.nn as nn
 import numpy as np
 from skimage.io import imread, imsave
 import tqdm
 import imageio
 import time
+
 from torch.autograd import Variable
 import torch
 import torchvision.models as models
@@ -180,7 +180,7 @@ class ModelResNet50(ResNet):
         Rzy = np.matmul(Rz, Ry)
         Rzyx = np.matmul(Rzy, Rx)
         R = Rzyx
-        # print(R)
+
         t = np.array([x, y, z])  # camera position [x,y, z] 0 0 5
 
         # ---------------------------------------------------------------------------------
@@ -198,7 +198,6 @@ class ModelResNet50(ResNet):
         self.K = K
         # self.R = nn.Parameter(torch.from_numpy(np.array(R, dtype=np.float32)))
         self.R = R
-        # print(R)
         # self.Rx
         # self.Ry
         # self.Rz
@@ -212,8 +211,9 @@ class ModelResNet50(ResNet):
 
         # --------------------------
 
+
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=self.R, t=self.t, image_size=512, near=1,
+        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
                                far=1000,
                                light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
                                light_color_ambient=[1, 1, 1], light_color_directional=[1, 1, 1],
@@ -225,7 +225,7 @@ class ModelResNet50(ResNet):
         x = self.seq1(x)
         x = self.seq2(x)
         params = self.fc(x.view(x.size(0), -1))
-        # print('computed parameters are {}'.format(params))
+        print('computed parameters are {}'.format(params))
         return params
 
 # ---------------------------------------------------------------------------------
@@ -237,6 +237,7 @@ def make_gif(filename):
             writer.append_data(imread(filename))
             os.remove(filename)
     writer.close()
+
 
 def R2Rmat(R, n_comps=1):
     #function use to make the angle into matrix for the projection function of the renderer
@@ -289,7 +290,6 @@ def R2Rmat(R, n_comps=1):
     # r_euler = r.as_euler('xyz', degrees=True)
     # print('reuler: {}'.format(r_euler))
     return R
-
 # ---------------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------------
@@ -299,7 +299,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im_R1'  # choose the corresponding database to use
+    file_name_extension = 'wrist1im_2'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -321,25 +321,6 @@ def main():
 
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
 
-    # for image, sil, param in train_dataloader:
-    #     # plot silhouette
-    #     print(image.size(), sil.size(), param.size())  # torch.Size([batch, 3, 512, 512]) torch.Size([batch, 6])
-    #     im = 0
-    #     print(param[im])  # parameter in form tensor([2.5508, 0.0000, 0.0000, 0.0000, 0.0000, 5.0000])
-    #
-    #     image2show = image[im]  # indexing random  one image
-    #     print(image2show.size())  # torch.Size([3, 512, 512])
-    #     plt.imshow((image2show * 0.5 + 0.5).numpy().transpose(1, 2, 0))
-    #     plt.show()
-    #
-    #     image2show = sil[im]  # indexing random  one image
-    #     print(image2show.size())  # torch.Size([3, 512, 512])
-    #     image2show = image2show.numpy()
-    #     plt.imshow(image2show, cmap='gray')
-    #     plt.show()
-    #
-    #     break  # break here just to show 1 batch of data
-
 
     count = 0
     losses = []
@@ -350,20 +331,20 @@ def main():
     ty = []
     tz = []
     #ground value to be plotted on the graph as line
-    alpha_GT = np.array( m.degrees(params[0,0]))
-    beta_GT =  np.array(m.degrees(params[0,1]))
-    gamma_GT =  np.array(m.degrees(params[0,2]))#angle in degrer
-    tx_GT =  np.array(params[0,3])
-    ty_GT = np.array(params[0,4])
-    tz_GT = np.array(params[0,5])
+    alpha_GT = 0
+    beta_GT = 0
+    gamma_GT = 0 #angle in degrer
+    tx_GT = -1.5
+    ty_GT = 1.5
+    tz_GT = 6
 
-    iterations = 500
-    file_name_extension = 'render'
+    iterations = 150
+    file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref_R1.png')) #image result to target
+    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT2.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_render_2step.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_render2.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -375,124 +356,89 @@ def main():
 
     model.to(device)
 
+#training loop
     model.train(True)
     bool_first = True
-    lr= 0.0001
+    lr = 0.001
     loop = tqdm.tqdm(range(iterations))
-
-    print('translation stage')
     for i in loop:
 
         for image, silhouette, parameter in train_dataloader:
+
+            #preview image
+            # image2show = image[0]  # indexing random  one image
+            # print(image2show.size())  # torch.Size([3, 512, 512])
+            # plt.imshow((image2show * 0.5 + 0.5).numpy().transpose(1, 2, 0))
+            # plt.show()
+            #preview silhouette
+            # image2show = silhouette # indexing random  one image
+            # image2show = np.squeeze(image2show.numpy())
+            # # print(image2show.size())  # torch.Size([3, 512, 512])
+            # plt.imshow((image2show * 0.5 + 0.5), cmap='gray')
+            # plt.show()
+
             image = image.to(device)
+            # init_params = torch.from_numpy(np.array([0,0,0,0,0,12])).to(device)
             parameter = parameter.to(device)
+            # print(parameter)
 
 
+            # init parameter in case of non convergence of the resnet  output parameteers
+            # simulate forward kinematic value
+            init_params = parameter
             if bool_first: #the first time, init the convergence parameter for the regression
-                init_params = parameter
+                # init_params = parameter
                 init_params[0, 0] = 0
                 init_params[0, 1] = 0
                 init_params[0, 2] = 0
-                init_params[0, 3] = torch.from_numpy(tx_GT).to(device)
-                init_params[0, 4] = torch.from_numpy(ty_GT).to(device)
-                init_params[0, 5] =  12
-                print('init_params are : {}'.format(init_params))
-                bool_first = False
-
-
-            silhouette = silhouette.to(device)
+                init_params[0, 3] = tx_GT
+                init_params[0, 4] = ty_GT
+                init_params[0,5] = 12
+                bool_first= False
 
             params = model(image)
-            print('computed parameters are {}'.format(params))
+            print(params)
             model.t = params[0,3:6]
-
-            image = model.renderer(model.vertices, model.faces, t=model.t, mode='silhouettes')
-            # regression between computed and ground truth
-            if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 100 == 0):
-                    if (lr > 0.0000001):
-                        lr = lr / 10
-                        print('update lr, is now {}'.format(lr))
-
-                print('render')
-            else:
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
-                print('regression')
-
-            print('loss is {}'.format(loss))
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            losses.append(loss.detach().cpu().numpy())
-            cp_x = ((model.t).detach().cpu().numpy())[0]
-            cp_y = ((model.t).detach().cpu().numpy())[1]
-            cp_z = ((model.t).detach().cpu().numpy())[2]
-
-
-            tx.append(cp_x)
-            ty.append(cp_y)
-            tz.append(cp_z) #z axis value
-
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
-
-            image = images.detach().cpu().numpy()[0].transpose(1,2,0)
-            # plt.imshow(image)
-            # plt.show()
-            imsave('/tmp/_tmp_%04d.png' % i, image)
-            loop.set_description('Optimizing (loss %.4f)' % loss.data)
-            count = count +1
-            # if loss.item() == 180:
-            #     break
-    print('rotation stage')
-    lr = 0.0001
-    for i in loop:
-
-        for image, silhouette, parameter in train_dataloader:
-            image = image.to(device)
-            parameter = parameter.to(device)
-
-            init_params = parameter
-            if bool_first: #the first time, init the convergence parameter for the regression
-                init_params[0, 0] = torch.from_numpy(alpha_GT).to(device)
-                init_params[0, 1] = torch.from_numpy(beta_GT).to(device)
-                init_params[0, 2] = torch.from_numpy(gamma_GT).to(device)
-                init_params[0, 3] = torch.from_numpy(tx_GT).to(device)
-                init_params[0, 4] = torch.from_numpy(ty_GT).to(device)
-                init_params[0, 5] =  torch.from_numpy(tz_GT).to(device)
-                print('init_params are : {}'.format(init_params))
-                bool_first = False
-
-            params = model(image)
-            print('computed parameters are {}'.format(params))
-
+            # print(model.t)
             R = params[0,0:3]
+            # print(R)
             model.R = R2Rmat(R) #angle from resnet are in radian
 
-            image = model.renderer(model.vertices, model.faces, R=model.R, mode='silhouettes')
-            # regression between computed and ground truth
+            image = model.renderer(model.vertices, model.faces, R=model.R, t= model.t, mode='silhouettes')
+             # regression between computed and ground truth
             if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 100 == 0):
-                    if (lr > 0.000001):
-                        lr = lr / 10
+                if (i % 30 == 0 and i > 2):
+                    if(lr > 0.000001):
+                        lr = lr/10
                         print('update lr, is now {}'.format(lr))
 
+                # update init param to avoid jumps if regression is again called
+                init_params[0,3] = model.t[0]
+                init_params[0,4] = model.t[1]
                 # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
                 # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
                 print('render')
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params[0, 0:3], init_params[0, 0:3]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
+                loss = nn.MSELoss()(params, init_params).to(device)
                 print('regression')
-
+                #
+            # else:
+            #     loss = nn.BCELoss()(image, model.image_ref[None, :, :]) #+ nn.MSELoss()(params, parameter[0,3:6]).to(device)
+            #     print('render')
             print('loss is {}'.format(loss))
 
+            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
+            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
+            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+            # fig = plt.figure()
+            # fig.add_subplot(1, 2, 1)
+            # plt.imshow(image, cmap='gray')
+            # fig.add_subplot(1, 2, 2)
+            # plt.imshow(ref, cmap='gray')
+            # plt.show()
 
             optimizer.zero_grad()
             loss.backward()
@@ -500,18 +446,34 @@ def main():
 
             losses.append(loss.detach().cpu().numpy())
 
-            cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
-            r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
+            cp_x = ((model.t).detach().cpu().numpy())[0]
+            cp_y = ((model.t).detach().cpu().numpy())[1]
+            cp_z = ((model.t).detach().cpu().numpy())[2]
+
+            cp_rotMat = (model.R).detach().cpu().numpy() #cp_rotMat = (model.R).detach().cpu().numpy()
+            r = Rot.from_dcm(cp_rotMat)
             r_euler = r.as_euler('xyz', degrees=True)
 
+            # print(r_euler)
+            # a.append(abs(r_euler[0,0] - alpha_GT))
+            # b.append(abs(r_euler[0,1] - beta_GT))
+            # c.append(abs(r_euler[0,2] - gamma_GT))
 
             a.append(abs(r_euler[0, 0])) #        a.append(abs(r_euler[0,0] ))
             b.append(abs(r_euler[0, 1]))
             c.append(abs(r_euler[0, 2]))
 
+            # print (r_euler[0,2], r_euler[0,2]% 180)
 
+            # tx.append(abs(cp_x - tx_GT))
+            # ty.append(abs(cp_y - ty_GT))
+            # tz.append(abs(cp_z)) #z axis error
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
+            tx.append(cp_x)
+            ty.append(cp_y)
+            tz.append(cp_z) #z axis value
+
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),R = model.R, t= model.t )
 
             image = images.detach().cpu().numpy()[0].transpose(1,2,0)
             # plt.imshow(image)
@@ -522,13 +484,12 @@ def main():
             # if loss.item() == 180:
             #     break
 
-
     make_gif(args.filename_output)
     fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
 
     p1.plot(np.arange(count), losses, label="Global Loss")
-    p1.set( ylabel='MSE Loss')
-    p1.set_ylim([0, 10])
+    p1.set( ylabel='BCE Loss')
+    p1.set_ylim([0, 1])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -543,26 +504,23 @@ def main():
     p2.set_ylim([-5, 10])
     p2.legend()
 
-    p3.plot(np.arange(count), a, label="alpha values", color = 'g')
-    p3.axhline(y=alpha_GT, color = 'g', linestyle= '--' )
-    p3.plot(np.arange(count), b, label="beta values", color = 'y')
-    p3.axhline(y=beta_GT, color = 'y', linestyle= '--')
-    p3.plot(np.arange(count), c, label="gamma values", color = 'b')
-    p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
+    p3.plot(np.arange(count), a, label="alpha values")
+    p3.axhline(y=alpha_GT)
+    p3.plot(np.arange(count), b, label="beta values")
+    p3.axhline(y=beta_GT)
+    p3.plot(np.arange(count), c, label="gamma values")
+    p3.axhline(y=gamma_GT)
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
-    p3.set_ylim([0, 180])
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}2.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_T{}.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}2.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_T{}.tex".format(file_name_extension))
 
-    plt.show()
     plt.show()
     end = time.time()
     print('time elapsed is: {} min'.format((end - start)/60))
-
 if __name__ == '__main__':
     main()

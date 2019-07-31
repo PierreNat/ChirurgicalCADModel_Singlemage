@@ -238,6 +238,52 @@ def make_gif(filename):
             os.remove(filename)
     writer.close()
 
+def R2Rmat(R, n_comps=1):
+    #function use to make the angle into matrix for the projection function of the renderer
+
+    # R[0] = 1.0472
+    # R[1] = 0
+    # R[2] = 0.698132
+    alpha = R[0] #already in radian
+    beta = R[1]
+    gamma =  R[2]
+
+    rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_z = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
+    rot_x[:, 0, 0] = 1
+    rot_x[:, 0, 1] = 0
+    rot_x[:, 0, 2] = 0
+    rot_x[:, 1, 0] = 0
+    rot_x[:, 1, 1] = alpha.cos()
+    rot_x[:, 1, 2] = -alpha.sin()
+    rot_x[:, 2, 0] = 0
+    rot_x[:, 2, 1] = alpha.sin()
+    rot_x[:, 2, 2] = alpha.cos()
+
+    rot_y[:, 0, 0] = beta .cos()
+    rot_y[:, 0, 1] = 0
+    rot_y[:, 0, 2] = beta .sin()
+    rot_y[:, 1, 0] = 0
+    rot_y[:, 1, 1] = 1
+    rot_y[:, 1, 2] = 0
+    rot_y[:, 2, 0] = -beta .sin()
+    rot_y[:, 2, 1] = 0
+    rot_y[:, 2, 2] = beta.cos()
+
+    rot_z[:, 0, 0] = gamma.cos()
+    rot_z[:, 0, 1] = -gamma.sin()
+    rot_z[:, 0, 2] = 0
+    rot_z[:, 1, 0] = gamma.sin()
+    rot_z[:, 1, 1] = gamma.cos()
+    rot_z[:, 1, 2] = 0
+    rot_z[:, 2, 0] = 0
+    rot_z[:, 2, 1] = 0
+    rot_z[:, 2, 2] = 1
+
+
+    R = torch.bmm(rot_z, torch.bmm(rot_y, rot_x))
+    return R
 # ---------------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------------
@@ -247,7 +293,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im_2'  # choose the corresponding database to use
+    file_name_extension = 'wrist1im_2_2'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -290,7 +336,7 @@ def main():
     file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT2.png')) #image result to target
+    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT2_2.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_render2.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
@@ -304,7 +350,7 @@ def main():
 
     model.to(device)
 
-#training loop
+#training loop translation
     model.train(True)
     bool_first = True
     lr = 0.001
@@ -462,5 +508,162 @@ def main():
     plt.show()
     end = time.time()
     print('time elapsed is: {} min'.format((end - start)/60))
+
+
+    print(model.R)
+    print(model.t)
+
+#training loop rotation
+
+    print('rotation looop')
+    model.train(True)
+    bool_first = True
+    lr = 0.001
+    loop = tqdm.tqdm(range(iterations))
+    for i in loop:
+
+        for image, silhouette, parameter in train_dataloader:
+
+
+            image = image.to(device)
+            parameter = parameter.to(device)
+
+
+            init_params = parameter
+            if bool_first: #the first time, init the convergence parameter for the regression
+                init_params[0, 0] = 0
+                init_params[0, 1] = 0
+                init_params[0, 2] = 0
+                init_params[0, 3] = model.t[0,0]
+                init_params[0, 4] = model.t[0,1]
+                init_params[0,5] = model.t[0,2]
+                bool_first= False
+
+            params = model(image)
+            model.t = params
+
+            image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
+             # regression between computed and ground truth
+            if (model.t[0, 2] > 4 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
+                if (i % 30 == 0 and i > 2):
+                    if(lr > 0.000001):
+                        lr = lr/10
+                        print('update lr, is now {}'.format(lr))
+
+                # update init param to avoid jumps if regression is again called
+                init_params[0, 3] = model.t[0, 0]
+                init_params[0, 4] = model.t[0, 1]
+                # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+                # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
+                print('render')
+            else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+                loss = nn.MSELoss()(params, init_params[0, 3:6]).to(device)
+                print('regression')
+                #
+            # else:
+            #     loss = nn.BCELoss()(image, model.image_ref[None, :, :]) #+ nn.MSELoss()(params, parameter[0,3:6]).to(device)
+            #     print('render')
+            print('loss is {}'.format(loss))
+
+            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
+            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
+            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+            # fig = plt.figure()
+            # fig.add_subplot(1, 2, 1)
+            # plt.imshow(image, cmap='gray')
+            # fig.add_subplot(1, 2, 2)
+            # plt.imshow(ref, cmap='gray')
+            # plt.show()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            losses.append(loss.detach().cpu().numpy())
+            # print(((model.K).detach().cpu().numpy()))
+            cp_x = ((model.t).detach().cpu().numpy())[0, 0]
+            cp_y = ((model.t).detach().cpu().numpy())[0, 1]
+            cp_z = ((model.t).detach().cpu().numpy())[0, 2]
+
+            cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
+            r = Rot.from_dcm(cp_rotMat)
+            r_euler = r.as_euler('xyz', degrees=True)
+
+            # print(r_euler)
+            # a.append(abs(r_euler[0,0] - alpha_GT))
+            # b.append(abs(r_euler[0,1] - beta_GT))
+            # c.append(abs(r_euler[0,2] - gamma_GT))
+
+            a.append(abs(r_euler[0, 0])) #        a.append(abs(r_euler[0,0] ))
+            b.append(abs(r_euler[0, 1]))
+            c.append(abs(r_euler[0, 2]))
+
+            # print (r_euler[0,2], r_euler[0,2]% 180)
+
+            # tx.append(abs(cp_x - tx_GT))
+            # ty.append(abs(cp_y - ty_GT))
+            # tz.append(abs(cp_z)) #z axis error
+
+            tx.append(cp_x)
+            ty.append(cp_y)
+            tz.append(cp_z) #z axis value
+
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
+
+            image = images.detach().cpu().numpy()[0].transpose(1,2,0)
+            # plt.imshow(image)
+            # plt.show()
+            imsave('/tmp/_tmp_%04d.png' % i, image)
+            loop.set_description('Optimizing (loss %.4f)' % loss.data)
+            count = count +1
+            # if loss.item() == 180:
+            #     break
+
+    make_gif(args.filename_output)
+    fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
+
+    p1.plot(np.arange(count), losses, label="Global Loss")
+    p1.set( ylabel='BCE Loss')
+    p1.set_ylim([0, 1])
+    # Place a legend to the right of this smaller subplot.
+    p1.legend()
+
+    p2.plot(np.arange(count), tx, label="x values", color = 'g' )
+    p2.axhline(y=tx_GT, color = 'g', linestyle= '--' )
+    p2.plot(np.arange(count), ty, label="y values", color = 'y')
+    p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
+    p2.plot(np.arange(count), tz, label="z values", color = 'b')
+    p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
+
+    p2.set(ylabel='Translation value')
+    p2.set_ylim([-5, 10])
+    p2.legend()
+
+    p3.plot(np.arange(count), a, label="alpha values")
+    p3.axhline(y=alpha_GT)
+    p3.plot(np.arange(count), b, label="beta values")
+    p3.axhline(y=beta_GT)
+    p3.plot(np.arange(count), c, label="gamma values")
+    p3.axhline(y=gamma_GT)
+
+    p3.set(xlabel='iterations', ylabel='Rotation value')
+    p3.legend()
+
+    fig.savefig('images/ex5plot_T{}.pdf'.format(file_name_extension))
+    import matplotlib2tikz
+
+    matplotlib2tikz.save("images/ex5plot_T{}.tex".format(file_name_extension))
+
+    plt.show()
+    end = time.time()
+    print('time elapsed is: {} min'.format((end - start)/60))
+
+
+    print(model.R)
+    print(model.t)
+
 if __name__ == '__main__':
     main()
