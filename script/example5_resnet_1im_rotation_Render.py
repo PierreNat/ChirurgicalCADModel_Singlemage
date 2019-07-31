@@ -323,14 +323,14 @@ def main():
     ty = []
     tz = []
     #ground value to be plotted on the graph as line
-    alpha_GT =  m.degrees(params[0,0])
-    beta_GT =  m.degrees(params[0,1])
-    gamma_GT =  m.degrees(params[0,2])#angle in degrer
+    alpha_GT = np.array( m.degrees(params[0,0]))
+    beta_GT =  np.array(m.degrees(params[0,1]))
+    gamma_GT =  np.array(m.degrees(params[0,2]))#angle in degrer
     tx_GT =  np.array(params[0,3])
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 500
+    iterations = 1000
     file_name_extension = 'render'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -360,12 +360,13 @@ def main():
 
             init_params = parameter
             if bool_first: #the first time, init the convergence parameter for the regression
-                init_params[0, 0] = 0
-                init_params[0, 1] = 0
-                init_params[0, 2] = 0
+                init_params[0, 0] = torch.from_numpy(alpha_GT).to(device)
+                init_params[0, 1] = torch.from_numpy(beta_GT).to(device)
+                init_params[0, 2] = torch.from_numpy(gamma_GT).to(device)
                 init_params[0, 3] = torch.from_numpy(tx_GT).to(device)
                 init_params[0, 4] = torch.from_numpy(ty_GT).to(device)
-                init_params[0,5] = torch.from_numpy(tz_GT).to(device)
+                init_params[0,5] =  torch.from_numpy(tz_GT).to(device)
+                print('init_params are : {}'.format(init_params))
                 bool_first = False
 
 
@@ -376,7 +377,7 @@ def main():
             model.t = params[0,3:6]
             print(model.t)
             model.R = R2Rmat(params[0,0:3]) #angle from resnet are in radian
-            bool_first = True
+
             # first_
             # print(model.t)
             # print(model.R)
@@ -386,20 +387,17 @@ def main():
             if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 200 == 0):
+                if (i % 100 == 0):
                     if (lr > 0.000001):
                         lr = lr / 10
                         print('update lr, is now {}'.format(lr))
 
-                # update init param to avoid jumps if regression is again called
-                # init_params[0, 3] = model.t[0]
-                # init_params[0, 4] = model.t[1]
                 # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
                 # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
                 print('render')
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params[0,3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
+                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
                 print('regression')
 
             print('loss is {}'.format(loss))

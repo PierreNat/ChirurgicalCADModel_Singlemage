@@ -454,10 +454,10 @@ def main():
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_T{}.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_T{}.tex".format(file_name_extension))
 
     plt.show()
     end = time.time()
