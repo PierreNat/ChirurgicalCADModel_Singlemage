@@ -97,7 +97,7 @@ def Myresnet50(filename_obj=None, filename_ref=None, filename_init=None, pretrai
 
 class ModelResNet50(ResNet):
     def __init__(self, filename_obj=None, filename_ref=None, filename_init=None, *args, **kwargs):
-        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=6, **kwargs)
+        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
 
 # resnet part
         self.seq1 = nn.Sequential(
@@ -146,7 +146,7 @@ class ModelResNet50(ResNet):
 
         x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
-        z = 12  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 6  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
         resolutionX = 512  # in pixel
         resolutionY = 512
@@ -207,7 +207,8 @@ class ModelResNet50(ResNet):
         self.tx = torch.from_numpy(np.array(x, dtype=np.float32)).cuda()
         self.ty = torch.from_numpy(np.array(y, dtype=np.float32)).cuda()
         self.tz = torch.from_numpy(np.array(z, dtype=np.float32)).cuda()
-        self.t =torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0)
+        self.t =torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0).cuda()
+        # self.t = torch.tensor([self.tx, self.ty, self.tz], dtype=torch.float)
         # self.t = nn.Parameter(torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0))
 
         # --------------------------
@@ -244,9 +245,10 @@ def R2Rmat(R, n_comps=1):
     # R[0] = 1.0472
     # R[1] = 0
     # R[2] = 0.698132
-    alpha = R[0] #already in radian
-    beta = R[1]
-    gamma =  R[2]
+    print(R)
+    alpha = R[0,0] #already in radian
+    beta = R[0,1]
+    gamma =  R[0,2]
 
     rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
@@ -299,7 +301,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im_R1'  # choose the corresponding database to use
+    file_name_extension = 'wrist1im_RotationCentered'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -342,9 +344,9 @@ def main():
     file_name_extension = 'render'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref_R1.png')) #image result to target
+    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'wrist1im_RotationCentered_ref.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_render_1.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_RotationCentered.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -382,33 +384,23 @@ def main():
 
             params = model(image)
             print('computed parameters are {}'.format(params))
-            model.t = params[0,3:6]
             # print(model.t)
-            R = params[0,0:3]
+            R = params
             # print(R)
-            model.R = R2Rmat(R) #angle from resnet are in radian
+            model.R = R2Rmat(R).to(device) #angle from resnet are in radian
 
-            # first_
-            print(model.t)
-            print(model.R)
-
-            image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
+            image = model.renderer(model.vertices, model.faces, R=model.R, mode='silhouettes')
             # regression between computed and ground truth
-            if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 40 == 0):
-                    if (lr > 0.000001):
-                        lr = lr / 10
-                        print('update lr, is now {}'.format(lr))
 
-                # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
-                print('render')
-            else:
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
-                print('regression')
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            loss = nn.BCELoss()(image, model.image_ref[None, :, :])
+            if (i % 40 == 0):
+                if (lr > 0.000001):
+                    lr = lr / 10
+                    print('update lr, is now {}'.format(lr))
+
+            print('render')
+
 
             print('loss is {}'.format(loss))
 
@@ -429,9 +421,9 @@ def main():
 
             losses.append(loss.detach().cpu().numpy())
             # print(((model.K).detach().cpu().numpy()))
-            cp_x = ((model.t).detach().cpu().numpy())[0]
-            cp_y = ((model.t).detach().cpu().numpy())[1]
-            cp_z = ((model.t).detach().cpu().numpy())[2]
+            cp_x = ((model.t).detach().cpu().numpy())[0,0]
+            cp_y = ((model.t).detach().cpu().numpy())[0,1]
+            cp_z = ((model.t).detach().cpu().numpy())[0,2]
 
 
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
@@ -473,7 +465,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='MSE Loss')
-    p1.set_ylim([0, 10])
+    p1.set_ylim([0, 1])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
