@@ -213,7 +213,7 @@ class ModelResNet50(ResNet):
 
 
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
+        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=self.R, t=self.t, image_size=512, near=1,
                                far=1000,
                                light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
                                light_color_ambient=[1, 1, 1], light_color_directional=[1, 1, 1],
@@ -330,6 +330,7 @@ def main():
     tx = []
     ty = []
     tz = []
+
     #ground value to be plotted on the graph as line
     alpha_GT = 0
     beta_GT = 0
@@ -337,8 +338,8 @@ def main():
     tx_GT = -1.5
     ty_GT = 1.5
     tz_GT = 6
-
-    iterations = 150
+    initZ = 12
+    iterations = 250
     file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -386,19 +387,20 @@ def main():
 
             # init parameter in case of non convergence of the resnet  output parameteers
             # simulate forward kinematic value
-            init_params = parameter
-            if bool_first: #the first time, init the convergence parameter for the regression
-                # init_params = parameter
-                init_params[0, 0] = 0
-                init_params[0, 1] = 0
-                init_params[0, 2] = 0
-                init_params[0, 3] = tx_GT
-                init_params[0, 4] = ty_GT
-                init_params[0,5] = 12
-                bool_first= False
+
+            # init_params = parameter
+            # if bool_first: #the first time, init the convergence parameter for the regression
+            #     # init_params = parameter
+            #     init_params[0, 0] = 0
+            #     init_params[0, 1] = 0
+            #     init_params[0, 2] = 0
+            #     init_params[0, 3] = tx_GT
+            #     init_params[0, 4] = ty_GT
+            #     init_params[0,5] = 12
+            #     bool_first= False
 
             params = model(image)
-            print(params)
+            # print(params)
             model.t = params[0,3:6]
             # print(model.t)
             R = params[0,0:3]
@@ -407,23 +409,26 @@ def main():
 
             image = model.renderer(model.vertices, model.faces, R=model.R, t= model.t, mode='silhouettes')
              # regression between computed and ground truth
+            # if (i>5):
             if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 30 == 0 and i > 2):
+                if (i % 40 == 0 and i > 2):
                     if(lr > 0.000001):
                         lr = lr/10
                         print('update lr, is now {}'.format(lr))
 
+                initZ = model.t[2]
                 # update init param to avoid jumps if regression is again called
-                init_params[0,3] = model.t[0]
-                init_params[0,4] = model.t[1]
+                # init_params[0,3] = model.t[0]
+                # init_params[0,4] = model.t[1]
                 # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
                 # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
                 print('render')
             else:
+                #try to make resnet output converge to meaninfull values
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params, init_params).to(device)
+                loss = nn.MSELoss()(params, torch.tensor([[0, 0, 0, tx_GT , ty_GT , initZ]], dtype=torch.float).to(device)).to(device)
                 print('regression')
                 #
             # else:
@@ -515,10 +520,10 @@ def main():
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.legend()
 
-    fig.savefig('images/ex5plot_T{}.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_T{}2.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_T{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_T{}2.tex".format(file_name_extension))
 
     plt.show()
     end = time.time()
