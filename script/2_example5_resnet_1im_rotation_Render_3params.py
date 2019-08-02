@@ -340,7 +340,7 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 200
+    iterations = 150
     file_name_extension = 'render'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -360,7 +360,7 @@ def main():
 
     model.train(True)
     bool_first = True
-    lr= 0.001
+    lr= 0.0001
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -491,10 +491,10 @@ def main():
     p3.set_ylim([0, 180])
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}Rotation_6params_render.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_{}Rotation_3params_render.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}Rotation_6params_render.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_{}Rotation_3params_render.tex".format(file_name_extension))
 
     plt.show()
     plt.show()

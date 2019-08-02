@@ -29,7 +29,7 @@ def main():
     print(vertices_1.shape)
     print(faces_1.shape)
 
-    file_name_extension = 'wrist1im_RotationCentered'
+    file_name_extension = 'wrist1im_RotationCentered2'
 
 
 
@@ -48,8 +48,8 @@ def main():
     loop = tqdm.tqdm(range(0, nb_im))
     for i in loop:
         # define transfomration parameter randomly uniform
-        alpha =0#uniform(0, 180)
-        beta = 0 #uniform(0, 180)
+        alpha =10#uniform(0, 180)
+        beta = 160 #uniform(0, 180)
         gamma = 90#uniform(0, 180)
         x = 0#uniform(-2, 2)
         y = 0#uniform(-2, 2)
