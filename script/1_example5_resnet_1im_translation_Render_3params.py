@@ -211,6 +211,7 @@ class ModelResNet50(ResNet):
 
         # --------------------------
 
+
         # setup renderer
         renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
                                far=1000,
@@ -283,9 +284,9 @@ def main():
     gamma_GT = 0 #angle in degrer
     tx_GT = -1.5
     ty_GT = 1.5
-    tz_GT = 5
+    tz_GT = 6
 
-    iterations = 1500
+    iterations = 150
     file_name_extension = 'renderBCEloss'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
@@ -305,7 +306,8 @@ def main():
 
 #training loop
     model.train(True)
-
+    bool_first = True
+    lr = 0.001
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -330,24 +332,27 @@ def main():
             # init parameter in case of non convergence of the resnet  output parameteers
             # simulate forward kinematic value
             init_params = parameter
-            init_params[0, 0] = 0
-            init_params[0, 1] = 0
-            init_params[0, 2] = 0
-            init_params[0, 3] = tx_GT
-            init_params[0, 4] = ty_GT
-            init_params[0,5] = 12
+            if bool_first: #the first time, init the convergence parameter for the regression
+                init_params[0, 0] = 0
+                init_params[0, 1] = 0
+                init_params[0, 2] = 0
+                init_params[0, 3] = tx_GT
+                init_params[0, 4] = ty_GT
+                init_params[0,5] = 12
+                bool_first= False
             silhouette = silhouette.to(device)
             params = model(image)
             model.t = params
-            bool_first = True
-            # first_
-            print(model.t)
 
             image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
              # regression between computed and ground truth
-            if (model.t[0, 2] > 2 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
-                loss = nn.MSELoss()(image, model.image_ref[None, :, :])
+            if (model.t[0, 2] > 4 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
+                if (i % 30 == 0 and i > 2):
+                    if(lr > 0.000001):
+                        lr = lr/10
+                        print('update lr, is now {}'.format(lr))
 
                 # update init param to avoid jumps if regression is again called
                 init_params[0, 3] = model.t[0, 0]
@@ -404,9 +409,9 @@ def main():
             # ty.append(abs(cp_y - ty_GT))
             # tz.append(abs(cp_z)) #z axis error
 
-            tx.append(abs(cp_x))
-            ty.append(abs(cp_y))
-            tz.append(abs(cp_z)) #z axis value
+            tx.append(cp_x)
+            ty.append(cp_y)
+            tz.append(cp_z) #z axis value
 
             images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
 
@@ -424,19 +429,19 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 0.03])
+    p1.set_ylim([0, 1])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
-    p2.plot(np.arange(count), tx, label="x values")
-    p2.axhline(y=tx_GT)
-    p2.plot(np.arange(count), ty, label="y values")
-    p2.axhline(y=ty_GT)
-    p2.plot(np.arange(count), tz, label="z values")
-    p2.axhline(y=tz_GT)
+    p2.plot(np.arange(count), tx, label="x values", color = 'g' )
+    p2.axhline(y=tx_GT, color = 'g', linestyle= '--' )
+    p2.plot(np.arange(count), ty, label="y values", color = 'y')
+    p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
+    p2.plot(np.arange(count), tz, label="z values", color = 'b')
+    p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
 
     p2.set(ylabel='Translation value')
-    p2.set_ylim([-10, 10])
+    p2.set_ylim([-5, 10])
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values")
@@ -449,10 +454,10 @@ def main():
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_T{}_Translation_3params_render.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_T{}_Translation_3params_render.tex".format(file_name_extension))
 
     plt.show()
     end = time.time()

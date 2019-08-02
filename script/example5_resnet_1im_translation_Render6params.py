@@ -338,6 +338,8 @@ def main():
     tx_GT = -1.5
     ty_GT = 1.5
     tz_GT = 6
+    initX = tx_GT
+    initY = ty_GT
     initZ = 12
     iterations = 250
     file_name_extension = 'renderBCEloss'
@@ -417,7 +419,6 @@ def main():
                     if(lr > 0.000001):
                         lr = lr/10
                         print('update lr, is now {}'.format(lr))
-
                 initZ = model.t[2]
                 # update init param to avoid jumps if regression is again called
                 # init_params[0,3] = model.t[0]
@@ -428,7 +429,7 @@ def main():
             else:
                 #try to make resnet output converge to meaninfull values
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                loss = nn.MSELoss()(params, torch.tensor([[0, 0, 0, tx_GT , ty_GT , initZ]], dtype=torch.float).to(device)).to(device)
+                loss = nn.MSELoss()(params, torch.tensor([[0, 0, 0, tx_GT, ty_GT , initZ]], dtype=torch.float).to(device)).to(device)
                 print('regression')
                 #
             # else:
@@ -510,20 +511,20 @@ def main():
     p2.set_ylim([-5, 10])
     p2.legend()
 
-    p3.plot(np.arange(count), a, label="alpha values")
-    p3.axhline(y=alpha_GT)
-    p3.plot(np.arange(count), b, label="beta values")
-    p3.axhline(y=beta_GT)
-    p3.plot(np.arange(count), c, label="gamma values")
-    p3.axhline(y=gamma_GT)
+    p3.plot(np.arange(count), a, label="alpha values", color = 'g')
+    p3.axhline(y=alpha_GT, color = 'g', linestyle= '--' )
+    p3.plot(np.arange(count), b, label="beta values", color = 'y')
+    p3.axhline(y=beta_GT, color = 'y', linestyle= '--')
+    p3.plot(np.arange(count), c, label="gamma values", color = 'b')
+    p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.legend()
 
-    fig.savefig('images/ex5plot_T{}2.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_T{}_RotationTranslation_6params_render.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_T{}2.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_T{}_RotationTranslation_6params_render.tex".format(file_name_extension))
 
     plt.show()
     end = time.time()

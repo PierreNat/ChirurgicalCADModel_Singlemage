@@ -7,7 +7,6 @@ import glob
 from torch.utils.data import Dataset
 from scipy.spatial.transform.rotation import Rotation as Rot
 import torch
-import math as m
 import torch.nn as nn
 import numpy as np
 from skimage.io import imread, imsave
@@ -180,7 +179,7 @@ class ModelResNet50(ResNet):
         Rzy = np.matmul(Rz, Ry)
         Rzyx = np.matmul(Rzy, Rx)
         R = Rzyx
-        # print(R)
+
         t = np.array([x, y, z])  # camera position [x,y, z] 0 0 5
 
         # ---------------------------------------------------------------------------------
@@ -241,12 +240,9 @@ def make_gif(filename):
 def R2Rmat(R, n_comps=1):
     #function use to make the angle into matrix for the projection function of the renderer
 
-    # R[0] = 1.0472
-    # R[1] = 0
-    # R[2] = 0.698132
-    alpha = R[0] #already in radian
+    alpha =  R[0] #already in radian
     beta = R[1]
-    gamma =  R[2]
+    gamma = R[2]
 
     rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
@@ -281,13 +277,8 @@ def R2Rmat(R, n_comps=1):
     rot_z[:, 2, 1] = 0
     rot_z[:, 2, 2] = 1
 
-
     R = torch.bmm(rot_z, torch.bmm(rot_y, rot_x))
-    # print(R)
-    # cp_rotMat = (R)  # cp_rotMat = (model.R).detach().cpu().numpy()
-    # r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
-    # r_euler = r.as_euler('xyz', degrees=True)
-    # print('reuler: {}'.format(r_euler))
+
     return R
 
 # ---------------------------------------------------------------------------------
@@ -331,20 +322,20 @@ def main():
     ty = []
     tz = []
     #ground value to be plotted on the graph as line
-    alpha_GT = np.array( m.degrees(params[0,0]))
-    beta_GT =  np.array(m.degrees(params[0,1]))
-    gamma_GT =  np.array(m.degrees(params[0,2]))#angle in degrer
-    tx_GT =  np.array(params[0,3])
-    ty_GT = np.array(params[0,4])
-    tz_GT = np.array(params[0,5])
+    alpha_GT =  60
+    beta_GT =  0
+    gamma_GT =  40#angle in degrer
+    tx_GT = 0
+    ty_GT = 0
+    tz_GT = 6
 
-    iterations = 500
-    file_name_extension = 'render'
+    iterations = 100
+    file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref_R1.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_render_1.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_regression_1.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -357,58 +348,31 @@ def main():
     model.to(device)
 
     model.train(True)
-    bool_first = True
-    lr= 0.001
+    lr= 0.01
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
             parameter = parameter.to(device)
-
-            init_params = parameter
-            if bool_first: #the first time, init the convergence parameter for the regression
-                init_params[0, 0] = torch.from_numpy(alpha_GT).to(device)
-                init_params[0, 1] = torch.from_numpy(beta_GT).to(device)
-                init_params[0, 2] = torch.from_numpy(gamma_GT).to(device)
-                init_params[0, 3] = torch.from_numpy(tx_GT).to(device)
-                init_params[0, 4] = torch.from_numpy(ty_GT).to(device)
-                init_params[0, 5] =  torch.from_numpy(tz_GT).to(device)
-                print('init_params are : {}'.format(init_params))
-                bool_first = False
-
-
+            print(parameter)
             silhouette = silhouette.to(device)
-
             params = model(image)
-            print('computed parameters are {}'.format(params))
+            print(params)
             model.t = params[0,3:6]
-            # print(model.t)
-            R = params[0,0:3]
-            # print(R)
-            model.R = R2Rmat(R) #angle from resnet are in radian
-
+            model.R = R2Rmat(params[0,0:3]) #angle from resnet are in radian
+            bool_first = True
             # first_
             # print(model.t)
             # print(model.R)
 
-            image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
-            # regression between computed and ground truth
-            if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 40 == 0):
-                    if (lr > 0.000001):
-                        lr = lr / 10
-                        print('update lr, is now {}'.format(lr))
-
-                # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-                # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
-                print('render')
-            else:
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
-                print('regression')
+             # regression between computed and ground truth
+            image = model.renderer(model.vertices, model.faces, R=model.R, t= model.t, mode='silhouettes')
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            loss = nn.MSELoss()(params, parameter).to(device)
+            if (i % 40 == 0):
+                lr = lr / 10
+                print('update lr, is now {}'.format(lr))
 
             print('loss is {}'.format(loss))
 
@@ -432,7 +396,6 @@ def main():
             cp_x = ((model.t).detach().cpu().numpy())[0]
             cp_y = ((model.t).detach().cpu().numpy())[1]
             cp_z = ((model.t).detach().cpu().numpy())[2]
-
 
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
             r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
@@ -499,10 +462,10 @@ def main():
     p3.set_ylim([0, 180])
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}2.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_{}_Rotation_6params_regression.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}2.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_{}_Rotation_6params_regression.tex".format(file_name_extension))
 
     plt.show()
     plt.show()
