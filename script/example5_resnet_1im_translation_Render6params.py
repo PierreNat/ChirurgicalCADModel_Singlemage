@@ -383,6 +383,7 @@ def main():
             # print(parameter)
 
 
+
             # init parameter in case of non convergence of the resnet  output parameteers
             # simulate forward kinematic value
             init_params = parameter
