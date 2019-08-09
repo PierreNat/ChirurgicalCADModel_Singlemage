@@ -18,7 +18,7 @@ def main():
     params_database = []
     im_nr = 1
 
-    vertices_1, faces_1, textures_1 = nr.load_obj("3D_objects/wrist.obj", load_texture=True) #, texture_size=4)
+    vertices_1, faces_1, textures_1 = nr.load_obj("3D_objects/AllTool.obj", load_texture=True) #, texture_size=4)
     print(vertices_1.shape)
     print(faces_1.shape)
     vertices_1 = vertices_1[None, :, :]  # add dimension
@@ -29,7 +29,7 @@ def main():
     print(vertices_1.shape)
     print(faces_1.shape)
 
-    file_name_extension = 'wrist1im_RotationCentered2'
+    file_name_extension = 'wrist1im_BodyR2'
 
 
 
@@ -48,12 +48,12 @@ def main():
     loop = tqdm.tqdm(range(0, nb_im))
     for i in loop:
         # define transfomration parameter randomly uniform
-        alpha =10#uniform(0, 180)
-        beta = 160 #uniform(0, 180)
-        gamma = 90#uniform(0, 180)
-        x = 0#uniform(-2, 2)
+        alpha =80#uniform(0, 180)
+        beta = 40#uniform(0, 180)
+        gamma = 20#uniform(0, 180)
+        x = -1#uniform(-2, 2)
         y = 0#uniform(-2, 2)
-        z = 6#uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 3#uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
         R = np.array([np.radians(alpha), np.radians(beta), np.radians(gamma)])  # angle in degree
         t = np.array([x, y, z])  # translation in meter
 

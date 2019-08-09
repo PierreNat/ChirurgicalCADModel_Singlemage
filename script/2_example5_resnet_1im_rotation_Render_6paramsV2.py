@@ -97,7 +97,7 @@ def Myresnet50(filename_obj=None, filename_ref=None, filename_init=None, pretrai
 
 class ModelResNet50(ResNet):
     def __init__(self, filename_obj=None, filename_ref=None, filename_init=None, *args, **kwargs):
-        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
+        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=6, **kwargs)
 
 # resnet part
         self.seq1 = nn.Sequential(
@@ -144,9 +144,9 @@ class ModelResNet50(ResNet):
         beta = np.radians(0)
         gamma = np.radians(0)
 
-        x = -1  # uniform(-2, 2)
+        x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
-        z = 3  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 12  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
         resolutionX = 512  # in pixel
         resolutionY = 512
@@ -207,8 +207,7 @@ class ModelResNet50(ResNet):
         self.tx = torch.from_numpy(np.array(x, dtype=np.float32)).cuda()
         self.ty = torch.from_numpy(np.array(y, dtype=np.float32)).cuda()
         self.tz = torch.from_numpy(np.array(z, dtype=np.float32)).cuda()
-        self.t =torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0).cuda()
-        # self.t = torch.tensor([self.tx, self.ty, self.tz], dtype=torch.float)
+        self.t =torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0)
         # self.t = nn.Parameter(torch.from_numpy(np.array([self.tx, self.ty, self.tz], dtype=np.float32)).unsqueeze(0))
 
         # --------------------------
@@ -245,10 +244,9 @@ def R2Rmat(R, n_comps=1):
     # R[0] = 1.0472
     # R[1] = 0
     # R[2] = 0.698132
-    # print(R)
-    alpha = R[0,0] #already in radian
-    beta = R[0,1]
-    gamma =  R[0,2]
+    alpha = R[0] #already in radian
+    beta = R[1]
+    gamma =  R[2]
 
     rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
@@ -340,13 +338,13 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 300
+    iterations = 100
     file_name_extension = 'render'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'AllTool.obj'))
     parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'wrist1im_BodyR2_ref.png')) #image result to target
     parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'resultR_{}.gif'.format(file_name_extension)))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_render_1.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -360,7 +358,10 @@ def main():
 
     model.train(True)
     bool_first = True
-    lr= 0.0001
+    lr= 0.001
+    loss_counter = 0
+    prev_loss = 1000
+    descent = False
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -384,27 +385,46 @@ def main():
 
             params = model(image)
             print('computed parameters are {}'.format(params))
+            model.t = params[0,3:6]
             # print(model.t)
-            R = params
+            R = params[0,0:3]
             # print(R)
-            model.R = R2Rmat(R).to(device) #angle from resnet are in radian
+            model.R = R2Rmat(R) #angle from resnet are in radian
 
-            image = model.renderer(model.vertices, model.faces, R=model.R, mode='silhouettes')
+            # first_
+            # print(model.t)
+            # print(model.R)
+
+            image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
             # regression between computed and ground truth
+            if (model.t[2] > 2 and model.t[2] < 8 and torch.abs(model.t[0]) < 1.5 and torch.abs(model.t[1]) < 1.5 ):
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+                loss = nn.BCELoss()(image, model.image_ref[None, :, :])
 
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-            if (i % 40 == 0 and i > 2):
-                if (lr > 0.000001):
-                    lr = lr / 10
-                    print('update lr, is now {}'.format(lr))
+                if(loss > prev_loss):
+                    loss_counter = loss_counter+1
+                    descent = False
+                else:
+                    prev_loss = loss
+                    descent = True
 
-            print('render')
+                if (loss_counter > 3 and descent==True and lr > 0.0000001):
 
+                        lr = lr / 10
+                        print('update lr, is now {}'.format(lr))
+                        loss_counter = 0
+
+                # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+                # loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
+                print('render')
+            else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
+                print('regression')
 
             print('loss is {}'.format(loss))
 
-            if (i == 0):
+            if(i == 0):
                 ref = np.squeeze(model.image_ref[None, :, :]).cpu()
                 image = image.detach().cpu().numpy().transpose((1, 2, 0))
                 image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
@@ -421,9 +441,9 @@ def main():
 
             losses.append(loss.detach().cpu().numpy())
             # print(((model.K).detach().cpu().numpy()))
-            cp_x = ((model.t).detach().cpu().numpy())[0,0]
-            cp_y = ((model.t).detach().cpu().numpy())[0,1]
-            cp_z = ((model.t).detach().cpu().numpy())[0,2]
+            cp_x = ((model.t).detach().cpu().numpy())[0]
+            cp_y = ((model.t).detach().cpu().numpy())[1]
+            cp_z = ((model.t).detach().cpu().numpy())[2]
 
 
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
@@ -435,10 +455,9 @@ def main():
             # b.append(abs(r_euler[0,1] - beta_GT))
             # c.append(abs(r_euler[0,2] - gamma_GT))
 
-            a.append(r_euler[0, 0]) #        a.append(abs(r_euler[0,0] ))
-            b.append(r_euler[0, 1])
-            c.append(r_euler[0, 2])
-            print(r_euler)
+            a.append(abs(r_euler[0, 0])) #        a.append(abs(r_euler[0,0] ))
+            b.append(abs(r_euler[0, 1]))
+            c.append(abs(r_euler[0, 2]))
 
             # print (r_euler[0,2], r_euler[0,2]% 180)
 
@@ -450,7 +469,7 @@ def main():
             ty.append(cp_y)
             tz.append(cp_z) #z axis value
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R, t= model.t )
 
             image = images.detach().cpu().numpy()[0].transpose(1,2,0)
             # plt.imshow(image)
@@ -466,7 +485,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='MSE Loss')
-    p1.set_ylim([0, 1])
+    p1.set_ylim([0, 10])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -489,13 +508,13 @@ def main():
     p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
-    p3.set_ylim([-180, 180])
+    p3.set_ylim([0, 180])
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}Rotation_3params_render.pdf'.format(file_name_extension))
+    fig.savefig('images/ex5plot_{}Rotation_6params_render.pdf'.format(file_name_extension))
     import matplotlib2tikz
 
-    matplotlib2tikz.save("images/ex5plot_{}Rotation_3params_render.tex".format(file_name_extension))
+    matplotlib2tikz.save("images/ex5plot_{}Rotation_6params_render.tex".format(file_name_extension))
 
     plt.show()
     plt.show()

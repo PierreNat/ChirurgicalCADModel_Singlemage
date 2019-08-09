@@ -429,7 +429,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 1])
+    p1.set_ylim([0, 2])
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 

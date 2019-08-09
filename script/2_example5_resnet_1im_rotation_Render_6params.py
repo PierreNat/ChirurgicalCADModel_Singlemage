@@ -397,8 +397,8 @@ def main():
             if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, model.image_ref[None, :, :])
-                if (i % 40 == 0):
-                    if (lr > 0.000001):
+                if (i % 40 == 0 ):
+                    if (lr > 0.00001):
                         lr = lr / 10
                         print('update lr, is now {}'.format(lr))
 
@@ -412,16 +412,16 @@ def main():
 
             print('loss is {}'.format(loss))
 
-
-            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
-            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
-            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
-            # fig = plt.figure()
-            # fig.add_subplot(1, 2, 1)
-            # plt.imshow(image, cmap='gray')
-            # fig.add_subplot(1, 2, 2)
-            # plt.imshow(ref, cmap='gray')
-            # plt.show()
+            if(i == 0):
+                ref = np.squeeze(model.image_ref[None, :, :]).cpu()
+                image = image.detach().cpu().numpy().transpose((1, 2, 0))
+                image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
+                fig = plt.figure()
+                fig.add_subplot(1, 2, 1)
+                plt.imshow(image, cmap='gray')
+                fig.add_subplot(1, 2, 2)
+                plt.imshow(ref, cmap='gray')
+                plt.show()
 
             optimizer.zero_grad()
             loss.backward()
@@ -504,7 +504,6 @@ def main():
 
     matplotlib2tikz.save("images/ex5plot_{}Rotation_6params_render.tex".format(file_name_extension))
 
-    plt.show()
     plt.show()
     end = time.time()
     print('time elapsed is: {} min'.format((end - start)/60))
