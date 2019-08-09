@@ -1,5 +1,5 @@
 """
-Example 4. Finding camera parameters.
+Example 5, regression optimization of MSE loss for 1 image with only translation parameter
 """
 import os
 import argparse
@@ -24,7 +24,8 @@ from scipy.misc import imsave
 import matplotlib2tikz
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
-data_dir = os.path.join(current_dir, 'data')
+data_dir = os.path.join(current_dir, '3D_objects')
+result_dir = os.path.join(current_dir, 'results')
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -232,9 +233,9 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im_2'  # choose the corresponding database to use
+    file_name_extension = 'Translation_im2'  # choose the corresponding database to use
 
-    cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
+    cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
     parameters_file = 'Npydatabase/params_{}.npy'.format(file_name_extension)
 
@@ -285,11 +286,10 @@ def main():
     tz_GT = np.array(params[0,5])
 
 
-    iterations = 50
-    file_name_extension = 'regression'
+    iterations = 100
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_regression_2.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_regression_animation.gif'.format(file_name_extension)))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -302,7 +302,11 @@ def main():
     model.to(device)
 
     model.train(True)
-    lr= 0.001
+
+    Lr_start = 0.0001
+    decreaseat = 40
+    lr = Lr_start
+
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
@@ -321,7 +325,7 @@ def main():
              # regression between computed and ground truth
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
             loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
-            if (i % 40 == 0):
+            if (i % decreaseat == 0 and i>2):
                 lr = lr / 10
                 print('update lr, is now {}'.format(lr))
 
@@ -343,7 +347,6 @@ def main():
             optimizer.step()
 
             losses.append(loss.detach().cpu().numpy())
-            # print(((model.K).detach().cpu().numpy()))
             cp_x = np.round(((model.t).detach().cpu().numpy())[0, 0], 2)
             cp_y = np.round(((model.t).detach().cpu().numpy())[0, 1], 2)
             cp_z = np.round(((model.t).detach().cpu().numpy())[0, 2], 2)
@@ -382,16 +385,13 @@ def main():
                 plt.xticks([0, 512])
                 plt.yticks([])
 
-                plt.savefig('results/Final_regression_translation_{}iterations.png'.format(iterations),  bbox_inches = 'tight', pad_inches = 0.05)
+                plt.savefig('results/Final_regression_translation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
 
 
             imsave('/tmp/_tmp_%04d.png' % i, img)
             loop.set_description('Optimizing (loss %.4f)' % loss.data)
             count = count +1
-            # if loss.item() == 180:
-            #     break
 
-    plt.show()
     end = time.time()
     exectime = round((end - start), 2) #format in minute
     print('time elapsed is: {} sec'.format(exectime))
@@ -399,7 +399,7 @@ def main():
 
     make_gif(args.filename_output)
     fig, (p1, p2) = plt.subplots(2, figsize=(15,10)) #largeur hauteur
-    fig.suptitle("Regression for 1 image, {} epochs in {} sec, 3 translations parameters".format(iterations,exectime), fontsize=14)
+    fig.suptitle("Regression for 1 image, {} epochs in {} sec, 3 translation parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='MSE Loss')
@@ -422,8 +422,8 @@ def main():
 
     plt.show()
 
-    fig.savefig('results/regression_1image_Translation_3params_Lr{}_{}.pdf'.format(lr, file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/regression_1image_Translation_3params_Lr{}_{}.tex".format(lr, file_name_extension))
+    fig.savefig('results/regression_1image_Translation_3params_Lr{}_{}.pdf'.format(Lr_start, file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/regression_1image_Translation_3params_Lr{}_{}.tex".format(Lr_start, file_name_extension))
 
 if __name__ == '__main__':
     main()
