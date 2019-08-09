@@ -21,6 +21,7 @@ import math as m
 import torch.utils.model_zoo as model_zoo
 import neural_renderer as nr
 from scipy.misc import imsave
+import matplotlib2tikz
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(current_dir, 'data')
@@ -62,12 +63,12 @@ class CubeDataset(Dataset):
     def __len__(self):
         return len(self.images)  # return the length of the dataset
 
-def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = True, modelName='None', **kwargs):
+def Myresnet50(filename_obj=None, pretrained=True, cifar = True, modelName='None', **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ModelResNet50( filename_obj=filename_obj, filename_ref=filename_ref)
+    model = ModelResNet50( filename_obj=filename_obj)
     if pretrained:
         print('using own pre-trained model')
 
@@ -88,7 +89,7 @@ def Myresnet50(filename_obj=None, filename_ref=None, pretrained=True, cifar = Tr
 
 
 class ModelResNet50(ResNet):
-    def __init__(self, filename_obj=None, filename_ref=None, filename_init=None, *args, **kwargs):
+    def __init__(self, filename_obj=None, filename_init=None, *args, **kwargs):
         super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
 
 # resnet part
@@ -120,11 +121,6 @@ class ModelResNet50(ResNet):
         self.register_buffer('vertices', vertices)
         self.register_buffer('faces', faces)
         self.register_buffer('textures', textures)
-
-        # load reference image
-        image_ref = torch.from_numpy((imread(filename_ref).max(-1) != 0).astype(np.float32))
-        self.register_buffer('image_ref', image_ref)
-
 
         # ---------------------------------------------------------------------------------
         # extrinsic parameter, link world/object coordinate to camera coordinate
@@ -257,6 +253,20 @@ def main():
 
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
 
+    # # check to iterate inside the test dataloader
+    # for image, sil, param in train_dataloader:
+    #
+    #     # print(image[2])
+    #     print(image.size(), param.size()) #torch.Size([batch, 3, 512, 512]) torch.Size([batch, 6])
+    #     im =0
+    #     print(param[im])  # parameter in form tensor([2.5508, 0.0000, 0.0000, 0.0000, 0.0000, 5.0000])
+    #
+    #     image2show = image[im]  # indexing random  one image
+    #     print(image2show.size()) #torch.Size([3, 512, 512])
+    #     plt.imshow((image2show * 0.5 + 0.5).numpy().transpose(1, 2, 0))
+    #     plt.show()
+    #     break  # break here just to show 1 batch of data
+
 
     count = 0
     losses = []
@@ -275,11 +285,10 @@ def main():
     tz_GT = np.array(params[0,5])
 
 
-    iterations = 100
+    iterations = 50
     file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_refT2.png')) #image result to target
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultT_regression_2.gif'))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
@@ -287,18 +296,19 @@ def main():
 
     # resnet50 = models.resnet50(pretrained=True)
 
-    model = Myresnet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref)
+    model = Myresnet50(filename_obj=args.filename_obj)
     # model = Model(args.filename_obj, args.filename_ref)
 
     model.to(device)
 
     model.train(True)
-    lr= 0.01
+    lr= 0.001
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
+
             parameter = parameter.to(device)
             # print(parameter)
             silhouette = silhouette.to(device)
@@ -309,7 +319,6 @@ def main():
             print(model.t)
 
              # regression between computed and ground truth
-            image = model.renderer(model.vertices, model.faces, t= model.t, mode='silhouettes')
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
             loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
             if (i % 40 == 0):
@@ -335,9 +344,9 @@ def main():
 
             losses.append(loss.detach().cpu().numpy())
             # print(((model.K).detach().cpu().numpy()))
-            cp_x = ((model.t).detach().cpu().numpy())[0, 0]
-            cp_y = ((model.t).detach().cpu().numpy())[0, 1]
-            cp_z = ((model.t).detach().cpu().numpy())[0, 2]
+            cp_x = np.round(((model.t).detach().cpu().numpy())[0, 0], 2)
+            cp_y = np.round(((model.t).detach().cpu().numpy())[0, 1], 2)
+            cp_z = np.round(((model.t).detach().cpu().numpy())[0, 2], 2)
 
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
             r = Rot.from_dcm(cp_rotMat)
@@ -353,12 +362,30 @@ def main():
 
             images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures),t= model.t )
 
-            image = images.detach().cpu().numpy()[0].transpose(1,2,0)
+            img = images.detach().cpu().numpy()[0].transpose(1,2,0)
 
             if(i == iterations-1):
-                plt.imshow(image)
-                plt.show()
-            imsave('/tmp/_tmp_%04d.png' % i, image)
+
+                imgGT = image.squeeze()  # float32 from 0-1
+                imgGT = imgGT.detach().cpu()
+                imgGT = (imgGT * 0.5 + 0.5).numpy().transpose(1, 2, 0)
+                # imgGT = (imgGT * 255).astype(np.uint8)  # cast from float32 255.0 to 255 uint8
+
+                a = plt.subplot(1, 2, 1)
+                plt.imshow(imgGT)
+                a.set_title('Ground truth \ntx {}\nty {}\ntz {}'.format(tx_GT, ty_GT, tz_GT))
+                plt.xticks([0, 512])
+                plt.yticks([])
+                a = plt.subplot(1, 2,2)
+                plt.imshow(img)
+                a.set_title('Renderer \ntx {:.3f}\nty {:.3f}\ntz {:.3f}'.format(cp_x, cp_y, cp_z))
+                plt.xticks([0, 512])
+                plt.yticks([])
+
+                plt.savefig('results/Final_regression_translation_{}iterations.png'.format(iterations),  bbox_inches = 'tight', pad_inches = 0.05)
+
+
+            imsave('/tmp/_tmp_%04d.png' % i, img)
             loop.set_description('Optimizing (loss %.4f)' % loss.data)
             count = count +1
             # if loss.item() == 180:
@@ -395,22 +422,8 @@ def main():
 
     plt.show()
 
-    # p3.plot(np.arange(count), a, label="alpha values")
-    # p3.axhline(y=alpha_GT)
-    # p3.plot(np.arange(count), b, label="beta values")
-    # p3.axhline(y=beta_GT)
-    # p3.plot(np.arange(count), c, label="gamma values")
-    # p3.axhline(y=gamma_GT)
-    #
-    # p3.set(xlabel='iterations', ylabel='Rotation value')
-    # p3.legend()
-
-    fig.savefig('results/regression1image_Translation_3params_{}.pdf'.format(file_name_extension))
-    import matplotlib2tikz
-
-    matplotlib2tikz.save("results/regression1image_Translation_3params_{}.tex".format(file_name_extension))
-
-
+    fig.savefig('results/regression_1image_Translation_3params_Lr{}_{}.pdf'.format(lr, file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/regression_1image_Translation_3params_Lr{}_{}.tex".format(lr, file_name_extension))
 
 if __name__ == '__main__':
     main()
