@@ -233,7 +233,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Translation_im2'  # choose the corresponding database to use
+    file_name_extension = 'Translation_im1'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -381,7 +381,7 @@ def main():
                 plt.yticks([])
                 a = plt.subplot(1, 2,2)
                 plt.imshow(img)
-                a.set_title('Renderer \ntx {:.3f}\nty {:.3f}\ntz {:.3f}'.format(cp_x, cp_y, cp_z))
+                a.set_title('Regression \ntx {:.3f}\nty {:.3f}\ntz {:.3f}'.format(cp_x, cp_y, cp_z))
                 plt.xticks([0, 512])
                 plt.yticks([])
 
@@ -420,10 +420,11 @@ def main():
     p2.set(xlabel='Iterations')
     p2.legend()
 
+
+
+    fig.savefig('results/regression_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    fig.savefig('results/regression_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/regression_1image_Translation_3params_{}.tex".format(file_name_extension))
     plt.show()
-
-    fig.savefig('results/regression_1image_Translation_3params_Lr{}_{}.pdf'.format(Lr_start, file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/regression_1image_Translation_3params_Lr{}_{}.tex".format(Lr_start, file_name_extension))
-
 if __name__ == '__main__':
     main()
