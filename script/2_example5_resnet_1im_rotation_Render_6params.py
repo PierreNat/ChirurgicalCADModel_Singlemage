@@ -1,5 +1,5 @@
 """
-Example 4. Finding camera parameters.
+Example 4. Finding  6 camera parameters rotation and translation
 """
 import os
 import argparse
@@ -292,7 +292,9 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Translation_im3'  # choose the corresponding database to use
+    file_name_extension = 'Rotation_centered_im4'
+    # file_name_extension = 'wrist_Rotation_Translation_imx'
+    # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -439,9 +441,9 @@ def main():
 
                 f = plt.subplot(1, 2, 1)
                 plt.imshow(imgGT)
-                f.set_title('Ground truth \n alpha {}° tx {}\n'
-                            'beta {}° ty {}\n '
-                            'gamma {}° tz {}'.format(alpha_GT,tx_GT, beta_GT,ty_GT,gamma_GT, tz_GT))
+                f.set_title('Ground truth \n alpha {:.3f}° tx {}\n'
+                            'beta {:.3f}° ty {}\n '
+                            'gamma {:.3f}° tz {}'.format(alpha_GT,tx_GT, beta_GT,ty_GT,gamma_GT, tz_GT))
                 plt.xticks([0, 512])
                 plt.yticks([])
                 f = plt.subplot(1, 2,2)
