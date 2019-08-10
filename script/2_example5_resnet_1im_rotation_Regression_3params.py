@@ -98,7 +98,7 @@ def Myresnet50(filename_obj=None, pretrained=True, cifar = True, modelName='None
 
 class ModelResNet50(ResNet):
     def __init__(self, filename_obj=None, filename_init=None, *args, **kwargs):
-        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=6, **kwargs)
+        super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=3, **kwargs)
 
 # resnet part
         self.seq1 = nn.Sequential(
@@ -140,7 +140,7 @@ class ModelResNet50(ResNet):
 
         x = 0  # uniform(-2, 2)
         y = 0  # uniform(-2, 2)
-        z = 12  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
+        z = 6  # uniform(5, 10) #1000t was done with value between 7 and 10, Rot and trans between 5 10
 
         resolutionX = 512  # in pixel
         resolutionY = 512
@@ -206,7 +206,7 @@ class ModelResNet50(ResNet):
         # --------------------------
 
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
+        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=self.R, t=self.t, image_size=512, near=1,
                                far=1000,
                                light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
                                light_color_ambient=[1, 1, 1], light_color_directional=[1, 1, 1],
@@ -237,9 +237,9 @@ def R2Rmat(R, n_comps=1):
     # R[0] = 1.0472
     # R[1] = 0
     # R[2] = 0.698132
-    alpha = R[0] #already in radian
-    beta = R[1]
-    gamma =  R[2]
+    alpha = R[0,0] #already in radian
+    beta = R[0,1]
+    gamma =  R[0,2]
 
     rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
@@ -292,8 +292,8 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Rotation_centered_im4'
-    # file_name_extension = 'wrist_Rotation_Translation_imx'
+    file_name_extension = 'Rotation_centered_im1'
+    # file_name_extension = 'Rotation_Translation_imx'
     # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
@@ -348,7 +348,7 @@ def main():
     iterations = 200
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation.gif'.format(file_name_extension)))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_regression_animation.gif'.format(file_name_extension)))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -377,28 +377,22 @@ def main():
             silhouette = silhouette.to(device)
 
             params = model(image)
+            print('computed parameters are {}'.format(params))
+            R = params
+            model.R = R2Rmat(R).to(device) #angle from resnet are in radian
+            model.t = (model.t).to(device)
 
-            model.t = params[0,3:6]
-            R = params[0,0:3]
-            model.R = R2Rmat(R) #angle from resnet are in radian
 
-            image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
-            current_GT_sil = (silhouette / 255).type(torch.FloatTensor).to(device)
             # regression between computed and ground truth
-            if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
-                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-                loss = nn.BCELoss()(image, current_GT_sil)
-                if (i % decreaseat  == 0 and i > 2):
-                    if (lr > 0.00001):
-                        lr = lr / 10
-                        print('update lr, is now {}'.format(lr))
-                print('render')
-            else:
-                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
-                print('regression')
+
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+            loss = nn.MSELoss()(params, parameter[0, 3:6]).to(device)
+            if (i % decreaseat == 0 and i>2):
+                lr = lr / 10
+                print('update lr, is now {}'.format(lr))
 
             print('loss is {}'.format(loss))
+
 
             optimizer.zero_grad()
             loss.backward()
@@ -406,9 +400,9 @@ def main():
 
             losses.append(loss.detach().cpu().numpy())
             # print(((model.K).detach().cpu().numpy()))
-            cp_x = ((model.t).detach().cpu().numpy())[0]
-            cp_y = ((model.t).detach().cpu().numpy())[1]
-            cp_z = ((model.t).detach().cpu().numpy())[2]
+            cp_x = ((model.t).detach().cpu().numpy())[0,0]
+            cp_y = ((model.t).detach().cpu().numpy())[0,1]
+            cp_z = ((model.t).detach().cpu().numpy())[0,2]
 
 
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
@@ -428,7 +422,7 @@ def main():
             ty.append(cp_y)
             tz.append(cp_z) #z axis value
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R, t= model.t )
 
             img = images.detach().cpu().numpy()[0].transpose(1,2,0)
 
@@ -448,13 +442,13 @@ def main():
                 plt.yticks([])
                 f = plt.subplot(1, 2,2)
                 plt.imshow(img)
-                f.set_title('Renderer \n alpha {:.3f}°  tx {:.3f}\n'
+                f.set_title('Regression \n alpha {:.3f}°  tx {:.3f}\n'
                             'beta {:.3f}° ty {:.3f}\n'
                             'gamma {:.3f}° tz {:.3f}'.format(cp_a, cp_x,cp_b, cp_y,cp_c, cp_z))
                 plt.xticks([0, 512])
                 plt.yticks([])
 
-                plt.savefig('results/Final_render_rotation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
+                plt.savefig('results/Final_regression_rotation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
 
 
             imsave('/tmp/_tmp_%04d.png' % i, img)
@@ -468,8 +462,8 @@ def main():
 
 
     make_gif(args.filename_output)
-    fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
-    fig.suptitle("Render for 1 image, {} epochs in {} sec, rotation and translation, 6 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
+    fig, (p1, p3) = plt.subplots(2, figsize=(15,10)) #largeur hauteur
+    fig.suptitle("Regression for 1 image, {} epochs in {} sec, rotation and translation, 3 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
@@ -477,18 +471,6 @@ def main():
     p1.set(xlabel='Iterations')
     # Place a legend to the right of this smaller subplot.
     p1.legend()
-
-    p2.plot(np.arange(count), tx, label="x values", color = 'g' )
-    p2.axhline(y=tx_GT, color = 'g', linestyle= '--' )
-    p2.plot(np.arange(count), ty, label="y values", color = 'y')
-    p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
-    p2.plot(np.arange(count), tz, label="z values", color = 'b')
-    p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
-
-    p2.set(ylabel='Translation value')
-    p2.set_ylim([-5, 10])
-    p2.set(xlabel='Iterations')
-    p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values", color = 'g')
     p3.axhline(y=alpha_GT, color = 'g', linestyle= '--' )
@@ -501,9 +483,9 @@ def main():
     p3.set_ylim([-180, 180])
     p3.legend()
 
-    fig.savefig('results/render_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    fig.savefig('results/render_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/render_1image_Translation_3params_{}.tex".format(file_name_extension))
+    fig.savefig('results/regression_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    fig.savefig('results/regression_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/regression_1image_Translation_3params_{}.tex".format(file_name_extension))
     plt.show()
 
 if __name__ == '__main__':

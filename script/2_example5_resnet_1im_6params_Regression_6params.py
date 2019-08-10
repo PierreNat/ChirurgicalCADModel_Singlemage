@@ -1,5 +1,5 @@
 """
-Example 4. Finding camera parameters.
+Example 4. Finding  6 camera parameters rotation and translation
 """
 import os
 import argparse
@@ -7,6 +7,7 @@ import glob
 from torch.utils.data import Dataset
 from scipy.spatial.transform.rotation import Rotation as Rot
 import torch
+import math as m
 import torch.nn as nn
 import numpy as np
 from skimage.io import imread, imsave
@@ -26,9 +27,12 @@ import math as m
 import torch.utils.model_zoo as model_zoo
 import neural_renderer as nr
 from scipy.misc import imsave
+import matplotlib2tikz
+
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
-data_dir = os.path.join(current_dir, 'data')
+data_dir = os.path.join(current_dir, '3D_objects')
+result_dir = os.path.join(current_dir, 'results')
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -67,12 +71,12 @@ class CubeDataset(Dataset):
     def __len__(self):
         return len(self.images)  # return the length of the dataset
 
-def Myresnet50(filename_obj=None, filename_ref=None, filename_init=None, pretrained=True, cifar = True, modelName='None', **kwargs):
+def Myresnet50(filename_obj=None, pretrained=True, cifar = True, modelName='None', **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = ModelResNet50( filename_obj=filename_obj, filename_ref=filename_ref, filename_init= filename_init)
+    model = ModelResNet50( filename_obj=filename_obj)
     if pretrained:
         print('using own pre-trained model')
 
@@ -92,10 +96,8 @@ def Myresnet50(filename_obj=None, filename_ref=None, filename_init=None, pretrai
     return model
 
 
-
-
 class ModelResNet50(ResNet):
-    def __init__(self, filename_obj=None, filename_ref=None, filename_init=None, *args, **kwargs):
+    def __init__(self, filename_obj=None, filename_init=None, *args, **kwargs):
         super(ModelResNet50, self).__init__(Bottleneck, [3, 4, 6, 3], num_classes=6, **kwargs)
 
 # resnet part
@@ -127,13 +129,6 @@ class ModelResNet50(ResNet):
         self.register_buffer('vertices', vertices)
         self.register_buffer('faces', faces)
         self.register_buffer('textures', textures)
-
-        # load reference image
-        image_ref = torch.from_numpy((imread(filename_ref).max(-1) != 0).astype(np.float32))
-        self.register_buffer('image_ref', image_ref)
-         # create image to init the resnet weight at first
-        image_init = torch.from_numpy((imread(filename_init).max(-1) != 0).astype(np.float32))
-        self.register_buffer('image_init', image_init)
 
         # ---------------------------------------------------------------------------------
         # extrinsic parameter, link world/object coordinate to camera coordinate
@@ -197,7 +192,6 @@ class ModelResNet50(ResNet):
         self.K = K
         # self.R = nn.Parameter(torch.from_numpy(np.array(R, dtype=np.float32)))
         self.R = R
-        # print(R)
         # self.Rx
         # self.Ry
         # self.Rz
@@ -212,7 +206,7 @@ class ModelResNet50(ResNet):
         # --------------------------
 
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=self.R, t=self.t, image_size=512, near=1,
+        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
                                far=1000,
                                light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
                                light_color_ambient=[1, 1, 1], light_color_directional=[1, 1, 1],
@@ -224,7 +218,7 @@ class ModelResNet50(ResNet):
         x = self.seq1(x)
         x = self.seq2(x)
         params = self.fc(x.view(x.size(0), -1))
-        # print('computed parameters are {}'.format(params))
+        print('computed parameters are {}'.format(params))
         return params
 
 # ---------------------------------------------------------------------------------
@@ -240,9 +234,12 @@ def make_gif(filename):
 def R2Rmat(R, n_comps=1):
     #function use to make the angle into matrix for the projection function of the renderer
 
-    alpha =  R[0] #already in radian
+    # R[0] = 1.0472
+    # R[1] = 0
+    # R[2] = 0.698132
+    alpha = R[0] #already in radian
     beta = R[1]
-    gamma = R[2]
+    gamma =  R[2]
 
     rot_x = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
     rot_y = Variable(torch.zeros(n_comps, 3, 3).cuda(), requires_grad=False)
@@ -277,8 +274,13 @@ def R2Rmat(R, n_comps=1):
     rot_z[:, 2, 1] = 0
     rot_z[:, 2, 2] = 1
 
-    R = torch.bmm(rot_z, torch.bmm(rot_y, rot_x))
 
+    R = torch.bmm(rot_z, torch.bmm(rot_y, rot_x))
+    # print(R)
+    # cp_rotMat = (R)  # cp_rotMat = (model.R).detach().cpu().numpy()
+    # r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
+    # r_euler = r.as_euler('xyz', degrees=True)
+    # print('reuler: {}'.format(r_euler))
     return R
 
 # ---------------------------------------------------------------------------------
@@ -290,9 +292,11 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'wrist1im_R1'  # choose the corresponding database to use
+    # file_name_extension = 'Rotation_centered_im1'
+    file_name_extension = 'Rotation_Translation_im1'
+    # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
-    cubes_file = 'Npydatabase/cubes_{}.npy'.format(file_name_extension)
+    cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
     parameters_file = 'Npydatabase/params_{}.npy'.format(file_name_extension)
 
@@ -305,13 +309,25 @@ def main():
     train_param = params
 
     normalize = Normalize(mean=[0.5], std=[0.5])
-    gray_to_rgb = Lambda(lambda x: x.repeat(3, 1, 1))
     transforms = Compose([ToTensor(), normalize])
     train_dataset = CubeDataset(train_im, train_sil, train_param, transforms)
 
 
     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
 
+    # # check to iterate inside the test dataloader
+    # for image, sil, param in train_dataloader:
+    #
+    #     # print(image[2])
+    #     print(image.size(), param.size()) #torch.Size([batch, 3, 512, 512]) torch.Size([batch, 6])
+    #     im =0
+    #     print(param[im])  # parameter in form tensor([2.5508, 0.0000, 0.0000, 0.0000, 0.0000, 5.0000])
+    #
+    #     image2show = image[im]  # indexing random  one image
+    #     print(image2show.size()) #torch.Size([3, 512, 512])
+    #     plt.imshow((image2show * 0.5 + 0.5).numpy().transpose(1, 2, 0))
+    #     plt.show()
+    #     break  # break here just to show 1 batch of data
 
     count = 0
     losses = []
@@ -322,38 +338,39 @@ def main():
     ty = []
     tz = []
     #ground value to be plotted on the graph as line
-    alpha_GT =  60
-    beta_GT =  0
-    gamma_GT =  40#angle in degrer
-    tx_GT = 0
-    ty_GT = 0
-    tz_GT = 6
+    alpha_GT = np.array( m.degrees(params[0,0]))
+    beta_GT =  np.array(m.degrees(params[0,1]))
+    gamma_GT =  np.array(m.degrees(params[0,2]))#angle in degrer
+    tx_GT =  np.array(params[0,3])
+    ty_GT = np.array(params[0,4])
+    tz_GT = np.array(params[0,5])
 
     iterations = 100
-    file_name_extension = 'regression'
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-ir', '--filename_ref', type=str, default=os.path.join(data_dir, 'example5_ref_R1.png')) #image result to target
-    parser.add_argument('-in', '--filename_init', type=str, default=os.path.join(data_dir, 'example5_inT.png')) # image to init resnet with regression
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(data_dir, 'example5_resultR_regression_1.gif'))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_regression_animation_6params.gif'.format(file_name_extension)))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
 
     # resnet50 = models.resnet50(pretrained=True)
 
-    model = Myresnet50(filename_obj=args.filename_obj, filename_ref=args.filename_ref, filename_init= args.filename_init)
+    model = Myresnet50(filename_obj=args.filename_obj)
     # model = Model(args.filename_obj, args.filename_ref)
 
     model.to(device)
 
     model.train(True)
-    lr= 0.01
+    bool_first = True
+    Lr_start = 0.001
+    decreaseat = 40
+    lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
 
         for image, silhouette, parameter in train_dataloader:
             image = image.to(device)
+            imgGT = image
             parameter = parameter.to(device)
             print(parameter)
             silhouette = silhouette.to(device)
@@ -370,22 +387,13 @@ def main():
             image = model.renderer(model.vertices, model.faces, R=model.R, t= model.t, mode='silhouettes')
             optimizer = torch.optim.Adam(model.parameters(), lr=lr)
             loss = nn.MSELoss()(params, parameter).to(device)
-            if (i % 40 == 0):
+            if (i % decreaseat == 0 and i > 2):
                 lr = lr / 10
                 print('update lr, is now {}'.format(lr))
 
             print('loss is {}'.format(loss))
 
 
-            # ref = np.squeeze(model.image_ref[None, :, :]).cpu()
-            # image = image.detach().cpu().numpy().transpose((1, 2, 0))
-            # image = np.squeeze((image * 255)).astype(np.uint8) # change from float 0-1 [512,512,1] to uint8 0-255 [512,512]
-            # fig = plt.figure()
-            # fig.add_subplot(1, 2, 1)
-            # plt.imshow(image, cmap='gray')
-            # fig.add_subplot(1, 2, 2)
-            # plt.imshow(ref, cmap='gray')
-            # plt.show()
 
             optimizer.zero_grad()
             loss.backward()
@@ -401,42 +409,64 @@ def main():
             r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
             r_euler = r.as_euler('xyz', degrees=True)
 
-            # print(r_euler)
-            # a.append(abs(r_euler[0,0] - alpha_GT))
-            # b.append(abs(r_euler[0,1] - beta_GT))
-            # c.append(abs(r_euler[0,2] - gamma_GT))
+            a.append(r_euler[0, 0]) #        a.append(abs(r_euler[0,0] ))
+            b.append(r_euler[0, 1])
+            c.append(r_euler[0, 2])
 
-            a.append(abs(r_euler[0, 0])) #        a.append(abs(r_euler[0,0] ))
-            b.append(abs(r_euler[0, 1]))
-            c.append(abs(r_euler[0, 2]))
+            cp_a = r_euler[0, 0]
+            cp_b = r_euler[0, 1]
+            cp_c = r_euler[0, 2]
 
-            # print (r_euler[0,2], r_euler[0,2]% 180)
-
-            # tx.append(abs(cp_x - tx_GT))
-            # ty.append(abs(cp_y - ty_GT))
-            # tz.append(abs(cp_z)) #z axis error
 
             tx.append(cp_x)
             ty.append(cp_y)
             tz.append(cp_z) #z axis value
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R=model.R, t=model.t)
 
-            image = images.detach().cpu().numpy()[0].transpose(1,2,0)
-            # plt.imshow(image)
-            # plt.show()
-            imsave('/tmp/_tmp_%04d.png' % i, image)
+            img = images.detach().cpu().numpy()[0].transpose(1, 2, 0)
+
+            if (i == iterations - 1):
+                imgGT = imgGT.squeeze()  # float32 from 0-1
+                imgGT = imgGT.detach().cpu()
+                imgGT = (imgGT * 0.5 + 0.5).numpy().transpose(1, 2, 0)
+                # imgGT = (imgGT * 255).astype(np.uint8)  # cast from float32 255.0 to 255 uint8
+
+                f = plt.subplot(1, 2, 1)
+                plt.imshow(imgGT)
+                f.set_title('Ground truth \n alpha {:.3f}° tx {}\n'
+                            'beta {:.3f}° ty {}\n '
+                            'gamma {:.3f}° tz {}'.format(alpha_GT, tx_GT, beta_GT, ty_GT, gamma_GT, tz_GT))
+                plt.xticks([0, 512])
+                plt.yticks([])
+                f = plt.subplot(1, 2, 2)
+                plt.imshow(img)
+                f.set_title('Regression \n alpha {:.3f}°  tx {:.3f}\n'
+                            'beta {:.3f}° ty {:.3f}\n'
+                            'gamma {:.3f}° tz {:.3f}'.format(cp_a, cp_x, cp_b, cp_y, cp_c, cp_z))
+                plt.xticks([0, 512])
+                plt.yticks([])
+
+                plt.savefig('results/Final_regression_6params_{}iterations_{}.png'.format(iterations, file_name_extension),
+                            bbox_inches='tight', pad_inches=0.05)
+
+            imsave('/tmp/_tmp_%04d.png' % i, img)
             loop.set_description('Optimizing (loss %.4f)' % loss.data)
-            count = count +1
-            # if loss.item() == 180:
-            #     break
+            count = count + 1
+
+    end = time.time()
+    exectime = round((end - start), 2)  # format in minute
+    print('time elapsed is: {} sec'.format(exectime))
+
 
     make_gif(args.filename_output)
     fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
+    fig.suptitle("Regression for 1 image, {} epochs in {} sec, rotation and translation, 6 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
-    p1.set( ylabel='MSE Loss')
-    p1.set_ylim([0, 10])
+    p1.set( ylabel='BCE Loss')
+    p1.set_ylim([0, 1])
+    p1.set(xlabel='Iterations')
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -449,6 +479,7 @@ def main():
 
     p2.set(ylabel='Translation value')
     p2.set_ylim([-5, 10])
+    p2.set(xlabel='Iterations')
     p2.legend()
 
     p3.plot(np.arange(count), a, label="alpha values", color = 'g')
@@ -459,18 +490,14 @@ def main():
     p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
-    p3.set_ylim([0, 180])
+    p3.set_ylim([-180, 180])
     p3.legend()
 
-    fig.savefig('images/ex5plot_{}_Rotation_6params_regression.pdf'.format(file_name_extension))
-    import matplotlib2tikz
-
-    matplotlib2tikz.save("images/ex5plot_{}_Rotation_6params_regression.tex".format(file_name_extension))
-
+    fig.savefig('results/regression_1image_6params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    fig.savefig('results/regression_1image_6params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/regression_1image_6params_{}.tex".format(file_name_extension))
     plt.show()
-    plt.show()
-    end = time.time()
-    print('time elapsed is: {} min'.format((end - start)/60))
+
 
 if __name__ == '__main__':
     main()
