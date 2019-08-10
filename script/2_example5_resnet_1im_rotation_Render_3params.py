@@ -1,5 +1,5 @@
 """
-Example 4. Finding  6 camera parameters rotation and translation
+Example 4. Finding  3 camera parameters rotation
 """
 import os
 import argparse
@@ -32,7 +32,7 @@ import matplotlib2tikz
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(current_dir, '3D_objects')
-result_dir = os.path.join(current_dir, 'results')
+result_dir = os.path.join(current_dir, 'results/2_rotation_render')
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -293,8 +293,7 @@ def main():
     print(device)
 
     file_name_extension = 'Rotation_centered_im1'
-    # file_name_extension = 'Rotation_Translation_imx'
-    # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
+
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -448,7 +447,7 @@ def main():
                 plt.xticks([0, 512])
                 plt.yticks([])
 
-                plt.savefig('results/Final_render_rotation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
+                plt.savefig('results/2_rotation_render/Final_render_rotation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
 
 
             imsave('/tmp/_tmp_%04d.png' % i, img)
@@ -463,7 +462,7 @@ def main():
 
     make_gif(args.filename_output)
     fig, (p1, p3) = plt.subplots(2, figsize=(15,10)) #largeur hauteur
-    fig.suptitle("Render for 1 image, {} epochs in {} sec, rotation and translation, 3 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
+    fig.suptitle("Render for 1 image, {} epochs in {} sec, rotation only, 3 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
@@ -483,9 +482,9 @@ def main():
     p3.set_ylim([-180, 180])
     p3.legend()
 
-    fig.savefig('results/render_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    fig.savefig('results/render_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/render_1image_Translation_3params_{}.tex".format(file_name_extension))
+    fig.savefig('results/2_rotation_render/render_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    fig.savefig('results/2_rotation_render/render_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/2_rotation_render/render_1image_Translation_3params_{}.tex".format(file_name_extension))
     plt.show()
 
 if __name__ == '__main__':

@@ -32,7 +32,7 @@ import matplotlib2tikz
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(current_dir, '3D_objects')
-result_dir = os.path.join(current_dir, 'results')
+result_dir = os.path.join(current_dir, 'results/3_6params_render')
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -292,7 +292,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    # file_name_extension = 'Rotation_centered_im1'
+    # file_name_extension = 'Rotation_centered_im4'
     file_name_extension = 'Rotation_Translation_im1'
     # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
@@ -345,10 +345,10 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 100
+    iterations = 200
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
-    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_regression_animation_6params.gif'.format(file_name_extension)))
+    parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation_6params.gif'.format(file_name_extension)))
     parser.add_argument('-mr', '--make_reference_image', type=int, default=0)
     parser.add_argument('-g', '--gpu', type=int, default=0)
     args = parser.parse_args()
@@ -362,7 +362,7 @@ def main():
 
     model.train(True)
     bool_first = True
-    Lr_start = 0.001
+    Lr_start = 0.0001
     decreaseat = 40
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
@@ -372,28 +372,33 @@ def main():
             image = image.to(device)
             imgGT = image
             parameter = parameter.to(device)
-            print(parameter)
-            silhouette = silhouette.to(device)
-            params = model(image)
-            print(params)
-            model.t = params[0,3:6]
-            model.R = R2Rmat(params[0,0:3]) #angle from resnet are in radian
-            bool_first = True
-            # first_
-            # print(model.t)
-            # print(model.R)
+            init_params = parameter
 
-             # regression between computed and ground truth
-            image = model.renderer(model.vertices, model.faces, R=model.R, t= model.t, mode='silhouettes')
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-            loss = nn.MSELoss()(params, parameter).to(device)
-            if (i % decreaseat == 0 and i > 2):
-                lr = lr / 10
-                print('update lr, is now {}'.format(lr))
+            silhouette = silhouette.to(device)
+
+            params = model(image)
+
+            model.t = params[0,3:6]
+            R = params[0,0:3]
+            model.R = R2Rmat(R) #angle from resnet are in radian
+
+            image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
+            current_GT_sil = (silhouette / 255).type(torch.FloatTensor).to(device)
+            # regression between computed and ground truth
+            if (model.t[2] > 4 and model.t[2] < 10 and torch.abs(model.t[0]) < 2 and torch.abs(model.t[1]) < 2):
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+                loss = nn.BCELoss()(image, current_GT_sil)
+                if (i % decreaseat  == 0 and i > 2):
+                    if (lr > 0.00001):
+                        lr = lr / 10
+                        print('update lr, is now {}'.format(lr))
+                print('render')
+            else:
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
+                print('regression')
 
             print('loss is {}'.format(loss))
-
-
 
             optimizer.zero_grad()
             loss.backward()
@@ -405,14 +410,15 @@ def main():
             cp_y = ((model.t).detach().cpu().numpy())[1]
             cp_z = ((model.t).detach().cpu().numpy())[2]
 
+
             cp_rotMat = (model.R) #cp_rotMat = (model.R).detach().cpu().numpy()
             r = Rot.from_dcm(cp_rotMat.detach().cpu().numpy())
             r_euler = r.as_euler('xyz', degrees=True)
 
+
             a.append(r_euler[0, 0]) #        a.append(abs(r_euler[0,0] ))
             b.append(r_euler[0, 1])
             c.append(r_euler[0, 2])
-
             cp_a = r_euler[0, 0]
             cp_b = r_euler[0, 1]
             cp_c = r_euler[0, 2]
@@ -422,11 +428,12 @@ def main():
             ty.append(cp_y)
             tz.append(cp_z) #z axis value
 
-            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R=model.R, t=model.t)
+            images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures), R = model.R,t= model.t )
 
-            img = images.detach().cpu().numpy()[0].transpose(1, 2, 0)
+            img = images.detach().cpu().numpy()[0].transpose(1,2,0)
 
-            if (i == iterations - 1):
+            if(i == iterations-1):
+
                 imgGT = imgGT.squeeze()  # float32 from 0-1
                 imgGT = imgGT.detach().cpu()
                 imgGT = (imgGT * 0.5 + 0.5).numpy().transpose(1, 2, 0)
@@ -436,32 +443,33 @@ def main():
                 plt.imshow(imgGT)
                 f.set_title('Ground truth \n alpha {:.3f}° tx {}\n'
                             'beta {:.3f}° ty {}\n '
-                            'gamma {:.3f}° tz {}'.format(alpha_GT, tx_GT, beta_GT, ty_GT, gamma_GT, tz_GT))
+                            'gamma {:.3f}° tz {}'.format(alpha_GT,tx_GT, beta_GT,ty_GT,gamma_GT, tz_GT))
                 plt.xticks([0, 512])
                 plt.yticks([])
-                f = plt.subplot(1, 2, 2)
+                f = plt.subplot(1, 2,2)
                 plt.imshow(img)
-                f.set_title('Regression \n alpha {:.3f}°  tx {:.3f}\n'
+                f.set_title('Renderer \n alpha {:.3f}°  tx {:.3f}\n'
                             'beta {:.3f}° ty {:.3f}\n'
-                            'gamma {:.3f}° tz {:.3f}'.format(cp_a, cp_x, cp_b, cp_y, cp_c, cp_z))
+                            'gamma {:.3f}° tz {:.3f}'.format(cp_a, cp_x,cp_b, cp_y,cp_c, cp_z))
                 plt.xticks([0, 512])
                 plt.yticks([])
 
-                plt.savefig('results/Final_regression_6params_{}iterations_{}.png'.format(iterations, file_name_extension),
-                            bbox_inches='tight', pad_inches=0.05)
+                plt.savefig('results/3_6params_render/Final_render_6params_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
+
 
             imsave('/tmp/_tmp_%04d.png' % i, img)
             loop.set_description('Optimizing (loss %.4f)' % loss.data)
-            count = count + 1
+            count = count +1
+
 
     end = time.time()
-    exectime = round((end - start), 2)  # format in minute
+    exectime = round((end - start), 2) #format in minute
     print('time elapsed is: {} sec'.format(exectime))
 
 
     make_gif(args.filename_output)
     fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
-    fig.suptitle("Regression for 1 image, {} epochs in {} sec, rotation and translation, 6 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
+    fig.suptitle("Render for 1 image, {} epochs in {} sec, rotation and translation, 6 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
@@ -493,11 +501,10 @@ def main():
     p3.set_ylim([-180, 180])
     p3.legend()
 
-    fig.savefig('results/regression_1image_6params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    fig.savefig('results/regression_1image_6params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/regression_1image_6params_{}.tex".format(file_name_extension))
+    fig.savefig('results/3_6params_render/render_1image_6params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    fig.savefig('results/3_6params_render/render_1image_6params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/3_6params_render/render_1image_6params_{}.tex".format(file_name_extension))
     plt.show()
-
 
 if __name__ == '__main__':
     main()

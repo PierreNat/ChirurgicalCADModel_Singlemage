@@ -25,7 +25,7 @@ import matplotlib2tikz
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data_dir = os.path.join(current_dir, '3D_objects')
-result_dir = os.path.join(current_dir, 'results')
+result_dir = os.path.join(current_dir, 'results/1_translation_regression')
 
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
@@ -385,7 +385,7 @@ def main():
                 plt.xticks([0, 512])
                 plt.yticks([])
 
-                plt.savefig('results/Final_regression_translation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
+                plt.savefig('results/1_translation_regression/Final_regression_translation_{}iterations_{}.png'.format(iterations, file_name_extension),  bbox_inches = 'tight', pad_inches = 0.05)
 
 
             imsave('/tmp/_tmp_%04d.png' % i, img)
@@ -422,9 +422,9 @@ def main():
 
 
 
-    fig.savefig('results/regression_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    fig.savefig('results/regression_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/regression_1image_Translation_3params_{}.tex".format(file_name_extension))
+    fig.savefig('results/1_translation_regression/regression_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    fig.savefig('results/1_translation_regression/regression_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
+    matplotlib2tikz.save("results/1_translation_regression/regression_1image_Translation_3params_{}.tex".format(file_name_extension))
     plt.show()
 if __name__ == '__main__':
     main()
