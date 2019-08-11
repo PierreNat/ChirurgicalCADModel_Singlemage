@@ -292,7 +292,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Rotation_centered_im1'
+    file_name_extension = 'Rotation_centered_im4'
 
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
@@ -336,6 +336,7 @@ def main():
     tx = []
     ty = []
     tz = []
+    isRegression = []
     #ground value to be plotted on the graph as line
     alpha_GT = np.array( m.degrees(params[0,0]))
     beta_GT =  np.array(m.degrees(params[0,1]))
@@ -361,7 +362,7 @@ def main():
 
     model.train(True)
     bool_first = True
-    Lr_start = 0.0001
+    Lr_start = 0.00001
     decreaseat = 40
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))

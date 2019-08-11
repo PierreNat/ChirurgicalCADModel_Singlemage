@@ -277,6 +277,7 @@ def main():
     tx = []
     ty = []
     tz = []
+    isRegression = []
     #ground value to be plotted on the graph as line
     alpha_GT = np.array( m.degrees(params[0,0]))
     beta_GT =  np.array(m.degrees(params[0,1]))
@@ -302,7 +303,7 @@ def main():
 
     model.train(True)
 
-    Lr_start = 0.00001
+    Lr_start = 0.0001
     decreaseat = 40
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
@@ -331,11 +332,14 @@ def main():
                     if(lr > 0.0000001):
                         lr = lr/10
                         print('update lr, is now {}'.format(lr))
+
+                isRegression.append(0)
                 print('render')
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
                 loss = nn.MSELoss()(params, init_params[0, 3:6]).to(device)
                 print('regression')
+                isRegression.append(8)
                 #
             # else:
             #     loss = nn.BCELoss()(image, model.image_ref[None, :, :]) #+ nn.MSELoss()(params, parameter[0,3:6]).to(device)
@@ -405,6 +409,7 @@ def main():
     fig.suptitle("Render for 1 image, {} epochs in {} sec, 3 translation parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
+    p1.plot(np.arange(count), isRegression, label="regression use")
     p1.set( ylabel='BCE Loss')
     p1.set_ylim([0, 1])
     p1.set(xlabel='Iterations')
@@ -417,6 +422,7 @@ def main():
     p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
     p2.plot(np.arange(count), tz, label="z values", color = 'b')
     p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
+    p2.plot(np.arange(count), isRegression, label="regression use", color = 'r')
 
     p2.set(ylabel='Translation value')
     p2.set_ylim([-5, 10])

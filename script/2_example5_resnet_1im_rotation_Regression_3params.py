@@ -292,7 +292,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Rotation_centered_im1'
+    file_name_extension = 'Rotation_centered_im4'
 
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)

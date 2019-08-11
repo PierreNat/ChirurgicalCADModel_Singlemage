@@ -293,7 +293,7 @@ def main():
     print(device)
 
     # file_name_extension = 'Rotation_centered_im4'
-    file_name_extension = 'Rotation_Translation_im1'
+    file_name_extension = 'Rotation_Translation_im2'
     # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
@@ -337,6 +337,7 @@ def main():
     tx = []
     ty = []
     tz = []
+    isRegression = []
     #ground value to be plotted on the graph as line
     alpha_GT = np.array( m.degrees(params[0,0]))
     beta_GT =  np.array(m.degrees(params[0,1]))
@@ -345,7 +346,7 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 200
+    iterations = 1000
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation_6params.gif'.format(file_name_extension)))
@@ -363,7 +364,7 @@ def main():
     model.train(True)
     bool_first = True
     Lr_start = 0.0001
-    decreaseat = 40
+    decreaseat = 80
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
@@ -393,10 +394,12 @@ def main():
                         lr = lr / 10
                         print('update lr, is now {}'.format(lr))
                 print('render')
+                isRegression.append(0)
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
                 loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
                 print('regression')
+                isRegression.append(8)
 
             print('loss is {}'.format(loss))
 
@@ -484,6 +487,7 @@ def main():
     p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
     p2.plot(np.arange(count), tz, label="z values", color = 'b')
     p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
+    p2.plot(np.arange(count), isRegression, label="regression use", color = 'r')
 
     p2.set(ylabel='Translation value')
     p2.set_ylim([-5, 10])
