@@ -233,7 +233,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Translation_im1'  # choose the corresponding database to use
+    file_name_extension = 'Translation_im4'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -285,7 +285,7 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 100
+    iterations = 150
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation.gif'.format(file_name_extension)))
@@ -302,7 +302,7 @@ def main():
 
     model.train(True)
 
-    Lr_start = 0.0001
+    Lr_start = 0.00001
     decreaseat = 40
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
