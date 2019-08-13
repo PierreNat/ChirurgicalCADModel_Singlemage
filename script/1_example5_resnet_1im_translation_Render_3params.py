@@ -233,7 +233,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Translation_im4'  # choose the corresponding database to use
+    file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -286,7 +286,7 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 150
+    iterations = 1000
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation.gif'.format(file_name_extension)))
@@ -303,7 +303,7 @@ def main():
 
     model.train(True)
 
-    Lr_start = 0.0001
+    Lr_start = 0.000001
     decreaseat = 40
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
@@ -328,10 +328,10 @@ def main():
             if (model.t[0, 2] > 4 and model.t[0, 2] < 10 and torch.abs(model.t[0, 0]) < 2 and torch.abs(model.t[0, 1]) < 2):
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
                 loss = nn.BCELoss()(image, current_GT_sil)
-                if (i % decreaseat == 0 and i > 2):
-                    if(lr > 0.0000001):
-                        lr = lr/10
-                        print('update lr, is now {}'.format(lr))
+                # if (i % decreaseat == 0 and i > 2):
+                #     if(lr > 0.0000001):
+                #         lr = lr/10
+                #         print('update lr, is now {}'.format(lr))
 
                 isRegression.append(0)
                 print('render')
@@ -409,31 +409,31 @@ def main():
     fig.suptitle("Render for 1 image, {} epochs in {} sec, 3 translation parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
 
     p1.plot(np.arange(count), losses, label="Global Loss")
-    p1.plot(np.arange(count), isRegression, label="regression use")
-    p1.set( ylabel='BCE Loss')
+    p1.set(ylabel='BCE Loss')
+    p1.set_yscale('log')
     p1.set_ylim([0, 1])
     p1.set(xlabel='Iterations')
+
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
-    p2.plot(np.arange(count), tx, label="x values", color = 'g' )
-    p2.axhline(y=tx_GT, color = 'g', linestyle= '--' )
-    p2.plot(np.arange(count), ty, label="y values", color = 'y')
-    p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
-    p2.plot(np.arange(count), tz, label="z values", color = 'b')
-    p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
-    p2.plot(np.arange(count), isRegression, label="regression use", color = 'r')
-
-    p2.set(ylabel='Translation value')
+    p2.plot(np.arange(count), tx, label="x values", color='g')
+    p2.axhline(y=tx_GT, color='g', linestyle='--')
+    p2.plot(np.arange(count), ty, label="y values", color='y')
+    p2.axhline(y=ty_GT, color='y', linestyle='--')
+    p2.plot(np.arange(count), tz, label="z values", color='b')
+    p2.axhline(y=tz_GT, color='b', linestyle='--')
+    p2.set(ylabel='Translation Values [cm]')
     p2.set_ylim([-5, 10])
     p2.set(xlabel='Iterations')
+    p2.plot(np.arange(count), isRegression, label="regression use", color = 'r')
     p2.legend()
 
 
 
     fig.savefig('results/1_translation_render/render_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
     fig.savefig('results/1_translation_render/render_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/1_translation_render/render_1image_Translation_3params_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("results/1_translation_render/render_1image_Translation_3params_{}.tex".format(file_name_extension),figureheight='5.5cm', figurewidth='15cm')
     plt.show()
 if __name__ == '__main__':
     main()

@@ -206,7 +206,7 @@ class ModelResNet50(ResNet):
         # --------------------------
 
         # setup renderer
-        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=R, t=self.t, image_size=512, near=1,
+        renderer = nr.Renderer(camera_mode='projection', orig_size=512, K=K, R=self.R, t=self.t, image_size=512, near=1,
                                far=1000,
                                light_intensity_ambient=1, light_intensity_directional=0, background_color=[0, 0, 0],
                                light_color_ambient=[1, 1, 1], light_color_directional=[1, 1, 1],
@@ -293,7 +293,7 @@ def main():
     print(device)
 
     # file_name_extension = 'Rotation_centered_im4'
-    file_name_extension = 'Rotation_Translation_im2'
+    file_name_extension = 'Rotation_Translation_im3'
     # file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
@@ -346,7 +346,7 @@ def main():
     ty_GT = np.array(params[0,4])
     tz_GT = np.array(params[0,5])
 
-    iterations = 1000
+    iterations = 500
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation_6params.gif'.format(file_name_extension)))
@@ -364,7 +364,7 @@ def main():
     model.train(True)
     bool_first = True
     Lr_start = 0.0001
-    decreaseat = 80
+    decreaseat = 40
     lr = Lr_start
     loop = tqdm.tqdm(range(iterations))
     for i in loop:
@@ -397,7 +397,8 @@ def main():
                 isRegression.append(0)
             else:
                 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-                loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
+                # loss = nn.MSELoss()(params[0, 3:6], init_params[0, 3:6]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
+                loss = nn.MSELoss()(params[0], init_params[0]).to(device) #this is not compared to the ground truth but to 'ideal' value in the frame
                 print('regression')
                 isRegression.append(8)
 
@@ -476,7 +477,9 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
-    p1.set_ylim([0, 1])
+    p1.set_yscale('log')
+    p1.set_xscale('log')
+    p1.set_ylim([0, 3])
     p1.set(xlabel='Iterations')
     # Place a legend to the right of this smaller subplot.
     p1.legend()
@@ -487,9 +490,11 @@ def main():
     p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
     p2.plot(np.arange(count), tz, label="z values", color = 'b')
     p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
-    p2.plot(np.arange(count), isRegression, label="regression use", color = 'r')
+    p2.plot(np.arange(count), isRegression, label="regression use", color = 'r', linestyle= '--')
+    # p2.set_yscale('log')
+    # p2.set_xscale('log')
 
-    p2.set(ylabel='Translation value')
+    p2.set(ylabel='Translation value [cm]')
     p2.set_ylim([-5, 10])
     p2.set(xlabel='Iterations')
     p2.legend()
@@ -499,7 +504,9 @@ def main():
     p3.plot(np.arange(count), b, label="beta values", color = 'y')
     p3.axhline(y=beta_GT, color = 'y', linestyle= '--')
     p3.plot(np.arange(count), c, label="gamma values", color = 'b')
-    p3.axhline(y=gamma_GT, color = 'b', linestyle= '--' )
+    p3.axhline(y=gamma_GT, color = 'b',linestyle= '--')
+    # p3.set_yscale('log')
+    # p3.set_xscale('log')
 
     p3.set(xlabel='iterations', ylabel='Rotation value')
     p3.set_ylim([-180, 180])
@@ -507,7 +514,7 @@ def main():
 
     fig.savefig('results/3_6params_render/render_1image_6params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
     fig.savefig('results/3_6params_render/render_1image_6params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/3_6params_render/render_1image_6params_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("results/3_6params_render/render_1image_6params_{}.tex".format(file_name_extension),figureheight='5.5cm', figurewidth='15cm')
     plt.show()
 
 if __name__ == '__main__':

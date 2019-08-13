@@ -467,6 +467,7 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='BCE Loss')
+    p1.set_yscale('log')
     p1.set_ylim([0, 1])
     p1.set(xlabel='Iterations')
     # Place a legend to the right of this smaller subplot.
@@ -485,7 +486,7 @@ def main():
 
     fig.savefig('results/2_rotation_render/render_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
     fig.savefig('results/2_rotation_render/render_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/2_rotation_render/render_1image_Translation_3params_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("results/2_rotation_render/render_1image_Translation_3params_{}.tex".format(file_name_extension),figureheight='5.5cm', figurewidth='15cm')
     plt.show()
 
 if __name__ == '__main__':

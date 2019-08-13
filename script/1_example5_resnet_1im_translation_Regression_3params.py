@@ -233,7 +233,7 @@ def main():
     torch.cuda.empty_cache()
     print(device)
 
-    file_name_extension = 'Translation_im4'  # choose the corresponding database to use
+    file_name_extension = 'Translation_im3'  # choose the corresponding database to use
 
     cubes_file = 'Npydatabase/wrist_{}.npy'.format(file_name_extension)
     silhouettes_file = 'Npydatabase/sils_{}.npy'.format(file_name_extension)
@@ -403,8 +403,10 @@ def main():
 
     p1.plot(np.arange(count), losses, label="Global Loss")
     p1.set( ylabel='MSE Loss')
+    p1.set_yscale('log')
     p1.set_ylim([0, 1])
     p1.set(xlabel='Iterations')
+
     # Place a legend to the right of this smaller subplot.
     p1.legend()
 
@@ -414,8 +416,7 @@ def main():
     p2.axhline(y=ty_GT, color = 'y', linestyle= '--' )
     p2.plot(np.arange(count), tz, label="z values", color = 'b')
     p2.axhline(y=tz_GT, color = 'b', linestyle= '--' )
-
-    p2.set(ylabel='Translation value')
+    p2.set(ylabel='Translation Values [cm]')
     p2.set_ylim([-5, 10])
     p2.set(xlabel='Iterations')
     p2.legend()
@@ -424,7 +425,7 @@ def main():
 
     fig.savefig('results/1_translation_regression/regression_1image_Translation_3params_{}.pdf'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
     fig.savefig('results/1_translation_regression/regression_1image_Translation_3params_{}.png'.format(file_name_extension), bbox_inches = 'tight', pad_inches = 0.05)
-    matplotlib2tikz.save("results/1_translation_regression/regression_1image_Translation_3params_{}.tex".format(file_name_extension))
+    matplotlib2tikz.save("results/1_translation_regression/regression_1image_Translation_3params_{}.tex".format(file_name_extension),figureheight='5.5cm', figurewidth='15cm')
     plt.show()
 if __name__ == '__main__':
     main()
