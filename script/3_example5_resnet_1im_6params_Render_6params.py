@@ -1,5 +1,7 @@
 """
-Example 4. Finding  6 camera parameters rotation and translation
+Renderer estimator for the converge of 1 image
+tool has translation and rotation motion
+Resnet outputs 6 parameters
 """
 import os
 import argparse
@@ -287,6 +289,8 @@ def R2Rmat(R, n_comps=1):
 # Main
 # ---------------------------------------------------------------------------------
 def main():
+
+    # ---------- LOAD DATASET AND FILE SELECTION ----------------------------------------------------------------------
     start = time.time()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.cuda.empty_cache()
@@ -307,6 +311,7 @@ def main():
     train_im = wrist  # 90% training
     train_sil = sils
     train_param = params
+
 
     normalize = Normalize(mean=[0.5], std=[0.5])
     transforms = Compose([ToTensor(), normalize])
@@ -347,6 +352,8 @@ def main():
     tz_GT = np.array(params[0,5])
 
     iterations = 500
+
+    # ---------- MODEL CREATION  ----------------------------------------------------------------------
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_render_animation_6params.gif'.format(file_name_extension)))
@@ -382,6 +389,8 @@ def main():
             model.t = params[0,3:6]
             R = params[0,0:3]
             model.R = R2Rmat(R) #angle from resnet are in radian
+
+            # ---------- DOES THE ESTIMATOR NEED INITIALIZATION ? -------------------------------------------------------
 
             image = model.renderer(model.vertices, model.faces, R=model.R, t=model.t, mode='silhouettes')
             current_GT_sil = (silhouette / 255).type(torch.FloatTensor).to(device)
@@ -470,7 +479,7 @@ def main():
     exectime = round((end - start), 2) #format in minute
     print('time elapsed is: {} sec'.format(exectime))
 
-
+    # ----------PLOT SECTION ------------------------------------------------------------------------
     make_gif(args.filename_output)
     fig, (p1, p2, p3) = plt.subplots(3, figsize=(15,10)) #largeur hauteur
     fig.suptitle("Render for 1 image, {} epochs in {} sec, rotation and translation, 6 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)

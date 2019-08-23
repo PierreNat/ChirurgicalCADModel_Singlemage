@@ -1,5 +1,7 @@
 """
-Example 4. Finding  3 camera parameters rotation
+Regression estimator for the converge of 1 image
+tool has rotation motion
+Resnet outputs 3 parameters
 """
 import os
 import argparse
@@ -287,6 +289,8 @@ def R2Rmat(R, n_comps=1):
 # Main
 # ---------------------------------------------------------------------------------
 def main():
+
+    # ---------- LOAD DATASET AND FILE SELECTION ----------------------------------------------------------------------
     start = time.time()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.cuda.empty_cache()
@@ -345,6 +349,7 @@ def main():
     tz_GT = np.array(params[0,5])
 
     iterations = 100
+    # ---------- MODEL CREATION  ----------------------------------------------------------------------
     parser = argparse.ArgumentParser()
     parser.add_argument('-io', '--filename_obj', type=str, default=os.path.join(data_dir, 'wrist.obj'))
     parser.add_argument('-or', '--filename_output', type=str, default=os.path.join(result_dir, '{}_regression_animation.gif'.format(file_name_extension)))
@@ -459,7 +464,7 @@ def main():
     exectime = round((end - start), 2) #format in minute
     print('time elapsed is: {} sec'.format(exectime))
 
-
+    # ----------PLOT SECTION ------------------------------------------------------------------------
     make_gif(args.filename_output)
     fig, (p1, p3) = plt.subplots(2, figsize=(15,10)) #largeur hauteur
     fig.suptitle("Regression for 1 image, {} epochs in {} sec, rotation only, 3 parameters \n lr={} and decrease each {} iterations".format(iterations,exectime, Lr_start, decreaseat), fontsize=14)
